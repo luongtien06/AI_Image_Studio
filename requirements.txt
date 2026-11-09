@@ -1,0 +1,35 @@
+# ==============================================================================
+# AI Image Studio - Standardized Dependencies
+# Python Target: 3.10
+# Environment: Conda 'realesrgan'
+# Tested on: Windows 11, NVIDIA RTX 2050 (CUDA 12.6)
+# ==============================================================================
+
+# ------------------------------------------------------------------------------
+# 1. Web Application & UI Server Dependencies
+# ------------------------------------------------------------------------------
+Flask==3.1.3
+Werkzeug==3.1.8
+Jinja2==3.1.6
+itsdangerous==2.2.0
+click==8.5.0
+blinker==1.9.0
+
+# ------------------------------------------------------------------------------
+# 2. Image Processing & Utilities
+# ------------------------------------------------------------------------------
+Pillow==12.3.0
+opencv-python==5.0.0.93
+numpy==2.2.6
+tqdm==4.70.1
+
+# ------------------------------------------------------------------------------
+# 3. AI Inference & Deep Learning Framework
+# NOTE: Do NOT install torch/torchvision via generic PyPI 'pip install' if using GPU.
+# Use official PyTorch wheels with CUDA 12.x support:
+#   pip install torch==2.6.0+cu126 torchvision==0.21.0+cu126 --extra-index-url https://download.pytorch.org/whl/cu126
+# ------------------------------------------------------------------------------
+torch==2.6.0+cu126
+torchvision==0.21.0+cu126
+basicsr==1.4.2
+realesrgan==0.3.0

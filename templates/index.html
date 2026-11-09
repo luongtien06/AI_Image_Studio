@@ -1,0 +1,3330 @@
+<!DOCTYPE html>
+<html lang="vi" data-theme="dark">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AI Image Studio</title>
+<style>
+/* ═══════════════════════════════════════════════════════════════ */
+/* CSS Variables & Reset                                          */
+/* ═══════════════════════════════════════════════════════════════ */
+:root {
+  --bg-primary: #0f1019;
+  --bg-secondary: #1a1b2e;
+  --bg-card: #22243a;
+  --bg-input: #2a2d45;
+  --bg-hover: #2f3250;
+  --text-primary: #e8eaed;
+  --text-secondary: #9aa0b8;
+  --text-muted: #6b7194;
+  --accent: #4f8cff;
+  --accent-hover: #6ba0ff;
+  --accent-dim: rgba(79,140,255,0.15);
+  --success: #22c55e;
+  --error: #ef4444;
+  --warning: #f59e0b;
+  --border: #2e3150;
+  --shadow: 0 4px 24px rgba(0,0,0,0.3);
+  --radius: 12px;
+  --radius-sm: 8px;
+  --transition: 0.25s ease;
+}
+[data-theme="light"] {
+  --bg-primary: #f0f2f5;
+  --bg-secondary: #ffffff;
+  --bg-card: #ffffff;
+  --bg-input: #eef1f5;
+  --bg-hover: #e5e8ee;
+  --text-primary: #1a1b2e;
+  --text-secondary: #555a72;
+  --text-muted: #888da8;
+  --border: #d5d8e0;
+  --shadow: 0 4px 24px rgba(0,0,0,0.08);
+}
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html { font-size: 15px; }
+body {
+  font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  overflow-x: hidden;
+}
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+button { cursor: pointer; border: none; font-family: inherit; font-size: 0.9rem; }
+input, select { font-family: inherit; font-size: 0.9rem; }
+
+/* ═══════════════════════════════════════════════════════════════ */
+/* Header                                                         */
+/* ═══════════════════════════════════════════════════════════════ */
+.header {
+  background: var(--bg-secondary);
+  border-bottom: 1px solid var(--border);
+  padding: 0.7rem 1.5rem;
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  position: sticky;
+  top: 0;
+  z-index: 100;
+}
+.header-brand {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 1.25rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+.header-brand .icon { font-size: 1.4rem; color: var(--accent); }
+.version-badge {
+  background: var(--accent-dim);
+  color: var(--accent);
+  font-size: 0.7rem;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 10px;
+}
+.header-status {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin-left: auto;
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+}
+.status-dot {
+  width: 8px; height: 8px;
+  border-radius: 50%;
+  background: var(--error);
+}
+.status-dot.ok { background: var(--success); }
+
+/* Language Switcher */
+.lang-switch {
+  display: flex;
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 2px;
+  gap: 2px;
+}
+.btn-lang {
+  background: transparent;
+  color: var(--text-secondary);
+  padding: 0.25rem 0.6rem;
+  font-size: 0.8rem;
+  font-weight: 600;
+  border-radius: 6px;
+  transition: all var(--transition);
+}
+.btn-lang.active {
+  background: var(--accent);
+  color: #fff;
+}
+
+.theme-toggle {
+  background: var(--bg-input);
+  color: var(--text-primary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 0.4rem 0.7rem;
+  font-size: 1.1rem;
+  line-height: 1;
+}
+
+/* GPU & Worker Monitor */
+.gpu-monitor {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  padding: 0.35rem 0.85rem;
+  border-radius: var(--radius-sm);
+  font-size: 0.8rem;
+}
+.gpu-vram-bar {
+  width: 90px;
+  height: 6px;
+  background: var(--bg-input);
+  border-radius: 3px;
+  overflow: hidden;
+}
+.gpu-vram-fill {
+  height: 100%;
+  background: var(--accent);
+  border-radius: 3px;
+  transition: width 0.3s ease;
+}
+.worker-badge {
+  font-size: 0.7rem;
+  font-weight: 700;
+  padding: 2px 7px;
+  border-radius: 8px;
+  letter-spacing: 0.5px;
+}
+.worker-READY { background: rgba(34,197,94,0.18); color: var(--success); }
+.worker-BUSY { background: rgba(79,140,255,0.22); color: var(--accent); }
+.worker-RECOVERING { background: rgba(245,158,11,0.22); color: var(--warning); }
+.worker-ERROR { background: rgba(239,68,68,0.22); color: var(--error); }
+.worker-STOPPED { background: var(--bg-input); color: var(--text-muted); }
+.range-slider {
+  vertical-align: middle;
+  cursor: pointer;
+  accent-color: var(--accent);
+  width: 90px;
+}
+
+/* ═══════════════════════════════════════════════════════════════ */
+/* Controls Bar                                                   */
+/* ═══════════════════════════════════════════════════════════════ */
+.controls {
+  background: var(--bg-secondary);
+  border-bottom: 1px solid var(--border);
+  padding: 0.65rem 1.5rem;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+  align-items: center;
+}
+.btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.45rem 0.9rem;
+  border-radius: var(--radius-sm);
+  font-weight: 500;
+  transition: all var(--transition);
+  white-space: nowrap;
+}
+.btn-primary { background: var(--accent); color: #fff; }
+.btn-primary:hover { background: var(--accent-hover); }
+.btn-primary:disabled { opacity: 0.5; cursor: not-allowed; }
+.btn-secondary { background: var(--bg-input); color: var(--text-primary); border: 1px solid var(--border); }
+.btn-secondary:hover { background: var(--bg-hover); }
+.btn-danger { background: var(--error); color: #fff; }
+.btn-danger:hover { background: #dc2626; }
+.btn-sm { padding: 0.3rem 0.65rem; font-size: 0.8rem; }
+.ctrl-group {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+.ctrl-label {
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+  white-space: nowrap;
+  font-weight: 500;
+}
+.ctrl-select {
+  background: var(--bg-input);
+  color: var(--text-primary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 0.4rem 0.65rem;
+  appearance: auto;
+}
+.ctrl-input {
+  background: var(--bg-input);
+  color: var(--text-primary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 0.4rem 0.65rem;
+  width: 210px;
+}
+.ctrl-separator {
+  width: 1px;
+  height: 26px;
+  background: var(--border);
+  margin: 0 0.2rem;
+}
+
+/* ═══════════════════════════════════════════════════════════════ */
+/* Main Layout                                                    */
+/* ═══════════════════════════════════════════════════════════════ */
+.main {
+  display: flex;
+  flex: 1;
+  overflow: hidden;
+}
+.panel-left {
+  width: 340px;
+  min-width: 290px;
+  border-right: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-secondary);
+  padding: 1rem;
+  gap: 0.9rem;
+}
+.panel-right {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-primary);
+  overflow: hidden;
+}
+
+/* ═══════════════════════════════════════════════════════════════ */
+/* Drop Zone                                                      */
+/* ═══════════════════════════════════════════════════════════════ */
+.dropzone {
+  padding: 2rem 1.2rem;
+  border: 2px dashed var(--border);
+  border-radius: var(--radius);
+  text-align: center;
+  color: var(--text-muted);
+  transition: all var(--transition);
+  cursor: pointer;
+  background: var(--bg-card);
+}
+.dropzone:hover, .dropzone.dragover {
+  border-color: var(--accent);
+  background: var(--accent-dim);
+  color: var(--accent);
+}
+.dropzone-icon { font-size: 2.5rem; margin-bottom: 0.5rem; }
+.dropzone-title { font-size: 0.95rem; font-weight: 600; color: var(--text-primary); margin-bottom: 0.25rem; }
+.dropzone-text { font-size: 0.78rem; color: var(--text-secondary); line-height: 1.4; }
+.dropzone-text code { background: var(--bg-input); padding: 2px 5px; border-radius: 4px; font-family: monospace; }
+
+/* ═══════════════════════════════════════════════════════════════ */
+/* Queue Summary Card & Batch Feedback                           */
+/* ═══════════════════════════════════════════════════════════════ */
+.queue-summary-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 0.9rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+.summary-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 0.83rem;
+}
+.sum-label { color: var(--text-secondary); }
+.sum-val { font-weight: 600; color: var(--text-primary); }
+.queue-card-actions {
+  display: flex;
+  gap: 0.5rem;
+  margin-top: 0.4rem;
+  border-top: 1px solid var(--border);
+  padding-top: 0.7rem;
+}
+
+/* Batch Upload Feedback Badge */
+.batch-feedback {
+  display: none;
+  background: rgba(79,140,255,0.12);
+  border: 1px solid var(--accent);
+  border-radius: var(--radius-sm);
+  padding: 0.6rem 0.8rem;
+  font-size: 0.78rem;
+  line-height: 1.4;
+  color: var(--text-primary);
+}
+.batch-feedback strong { color: var(--accent); }
+
+/* ═══════════════════════════════════════════════════════════════ */
+/* Right Panel / Toolbar & Queue                                   */
+/* ═══════════════════════════════════════════════════════════════ */
+.panel-header {
+  padding: 0.75rem 1.5rem;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-secondary);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.panel-title {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  font-size: 1rem;
+  font-weight: 600;
+}
+.panel-title .badge {
+  background: var(--accent-dim);
+  color: var(--accent);
+  font-size: 0.75rem;
+  padding: 2px 8px;
+  border-radius: 10px;
+}
+.folder-indicator {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  max-width: 420px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Filter, Search & View Toolbar */
+.filter-toolbar {
+  background: var(--bg-card);
+  border-bottom: 1px solid var(--border);
+  padding: 0.55rem 1.5rem;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+  align-items: center;
+  justify-content: space-between;
+}
+.toolbar-left, .toolbar-right {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+.search-input {
+  background: var(--bg-input);
+  color: var(--text-primary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 0.35rem 0.7rem;
+  font-size: 0.82rem;
+  width: 190px;
+}
+.filter-select {
+  background: var(--bg-input);
+  color: var(--text-primary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 0.35rem 0.6rem;
+  font-size: 0.82rem;
+  appearance: auto;
+}
+.view-btn {
+  background: var(--bg-input);
+  color: var(--text-secondary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 0.35rem 0.6rem;
+  font-size: 0.9rem;
+  line-height: 1;
+  transition: all var(--transition);
+}
+.view-btn.active {
+  background: var(--accent);
+  color: #fff;
+  border-color: var(--accent);
+}
+.batch-dropdown {
+  position: relative;
+  display: inline-block;
+}
+.batch-dropdown-menu {
+  display: none;
+  position: absolute;
+  right: 0;
+  top: 100%;
+  margin-top: 4px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow);
+  z-index: 150;
+  min-width: 200px;
+  overflow: hidden;
+}
+.batch-dropdown-menu.show {
+  display: block;
+}
+.batch-dropdown-item {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 0.55rem 0.9rem;
+  background: transparent;
+  color: var(--text-primary);
+  font-size: 0.82rem;
+  border-bottom: 1px solid rgba(255,255,255,0.05);
+  transition: background var(--transition);
+}
+.batch-dropdown-item:hover {
+  background: var(--bg-hover);
+  color: var(--accent);
+}
+
+/* ═══════════════════════════════════════════════════════════════ */
+/* File List (Grid vs List View Modes)                            */
+/* ═══════════════════════════════════════════════════════════════ */
+.file-list {
+  flex: 1;
+  overflow-y: auto;
+  padding: 0.9rem 1.5rem;
+}
+.file-list-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  color: var(--text-muted);
+  gap: 0.8rem;
+  text-align: center;
+}
+.file-list-empty .empty-icon { font-size: 3.5rem; opacity: 0.3; }
+
+/* Grid View Mode */
+.file-list.view-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 1rem;
+  align-content: start;
+}
+.file-list.view-grid .file-item {
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+  transition: all var(--transition);
+  position: relative;
+}
+.file-list.view-grid .file-item:hover {
+  border-color: rgba(79,140,255,0.4);
+  transform: translateY(-2px);
+  box-shadow: 0 4px 14px rgba(0,0,0,0.2);
+}
+.file-list.view-grid .card-top {
+  position: relative;
+  width: 100%;
+  height: 150px;
+  background: var(--bg-input);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+.file-list.view-grid .file-thumb {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.file-list.view-grid .card-checkbox {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  width: 18px;
+  height: 18px;
+  accent-color: var(--accent);
+  cursor: pointer;
+  z-index: 2;
+}
+.file-list.view-grid .card-badge-status {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  z-index: 2;
+}
+.file-list.view-grid .card-body {
+  padding: 0.8rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  flex: 1;
+}
+.file-list.view-grid .card-footer {
+  padding: 0.5rem 0.8rem;
+  border-top: 1px solid var(--border);
+  background: rgba(0,0,0,0.1);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+/* List View Mode */
+.file-list.view-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+.file-list.view-list .file-item {
+  display: flex;
+  align-items: center;
+  gap: 0.9rem;
+  padding: 0.6rem 0.9rem;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  transition: all var(--transition);
+}
+.file-list.view-list .file-item:hover {
+  background: var(--bg-hover);
+  border-color: rgba(79,140,255,0.4);
+}
+.file-list.view-list .card-checkbox {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+.file-list.view-list .file-thumb {
+  width: 44px;
+  height: 44px;
+  border-radius: 6px;
+  object-fit: cover;
+  flex-shrink: 0;
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+}
+.file-list.view-list .file-info {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+.file-list.view-list .file-status {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+/* Common Item Elements */
+.file-name {
+  font-size: 0.88rem;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-primary);
+}
+.file-meta {
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+}
+.file-progress {
+  width: 100%;
+  height: 4px;
+  background: var(--bg-input);
+  border-radius: 2px;
+  overflow: hidden;
+  margin-top: 3px;
+}
+.file-progress-bar {
+  height: 100%;
+  background: var(--accent);
+  border-radius: 2px;
+  transition: width 0.3s ease;
+  width: 0%;
+}
+.status-badge {
+  font-size: 0.72rem;
+  font-weight: 600;
+  padding: 3px 9px;
+  border-radius: 12px;
+  white-space: nowrap;
+}
+.status-pending, .status-queued { background: var(--bg-input); color: var(--text-muted); }
+.status-validating { background: rgba(56, 189, 248, 0.2); color: #38bdf8; }
+.status-processing { background: rgba(79,140,255,0.2); color: var(--accent); }
+.status-retry, .status-retry_wait { background: rgba(245, 158, 11, 0.2); color: var(--warning); }
+.status-completed { background: rgba(34,197,94,0.15); color: var(--success); }
+.status-error, .status-failed { background: rgba(239,68,68,0.15); color: var(--error); }
+.status-cancel_requested { background: rgba(168, 85, 247, 0.2); color: #a855f7; }
+.status-cancelled { background: var(--bg-input); color: var(--text-muted); }
+.badge-retry {
+  background: rgba(245, 158, 11, 0.18);
+  color: var(--warning);
+  font-size: 0.7rem;
+  padding: 2px 5px;
+  border-radius: 6px;
+  font-weight: 600;
+}
+.file-actions { display: flex; gap: 0.3rem; }
+.file-actions button {
+  background: var(--bg-input);
+  color: var(--text-secondary);
+  padding: 3px 7px;
+  border-radius: 6px;
+  font-size: 0.8rem;
+  transition: all var(--transition);
+}
+.file-actions button:hover { background: var(--bg-hover); color: var(--text-primary); }
+
+/* ═══════════════════════════════════════════════════════════════ */
+/* Status Bar                                                     */
+/* ═══════════════════════════════════════════════════════════════ */
+.statusbar {
+  background: var(--bg-secondary);
+  border-top: 1px solid var(--border);
+  padding: 0.45rem 1.5rem;
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+}
+.statusbar-progress {
+  flex: 1;
+  max-width: 280px;
+  height: 6px;
+  background: var(--bg-input);
+  border-radius: 3px;
+  overflow: hidden;
+}
+.statusbar-progress-bar {
+  height: 100%;
+  background: var(--accent);
+  border-radius: 3px;
+  transition: width 0.4s ease;
+  width: 0%;
+}
+
+/* ═══════════════════════════════════════════════════════════════ */
+/* Modals (Folder Browser, Quick Preview, Log, Batch Summary)     */
+/* ═══════════════════════════════════════════════════════════════ */
+.modal-overlay {
+  display: none;
+  position: fixed;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background: rgba(0,0,0,0.65);
+  z-index: 1000;
+  align-items: center;
+  justify-content: center;
+}
+.modal-overlay.show { display: flex; }
+.modal {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  width: 520px;
+  max-width: 90vw;
+  max-height: 75vh;
+  display: flex;
+  flex-direction: column;
+}
+.modal-header {
+  padding: 0.9rem 1.2rem;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-weight: 600;
+}
+.modal-body { flex: 1; overflow-y: auto; padding: 0.8rem; }
+.modal-footer {
+  padding: 0.75rem 1.2rem;
+  border-top: 1px solid var(--border);
+  display: flex;
+  gap: 0.5rem;
+  justify-content: flex-end;
+}
+.modal-path {
+  padding: 0.55rem 1rem;
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+  background: var(--bg-input);
+  border-bottom: 1px solid var(--border);
+  word-break: break-all;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+.folder-item {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.45rem 0.9rem;
+  cursor: pointer;
+  border-radius: var(--radius-sm);
+  transition: background var(--transition);
+}
+.folder-item:hover { background: var(--bg-hover); }
+.folder-icon { font-size: 1.1rem; }
+
+/* ═══════════════════════════════════════════════════════════════ */
+/* Toasts                                                         */
+/* ═══════════════════════════════════════════════════════════════ */
+.toast-container {
+  position: fixed;
+  top: 1rem;
+  right: 1rem;
+  z-index: 2000;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+.toast {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 0.65rem 0.95rem;
+  font-size: 0.83rem;
+  box-shadow: var(--shadow);
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  animation: slideIn 0.3s ease;
+  max-width: 380px;
+}
+.toast.success { border-left: 3px solid var(--success); }
+.toast.error { border-left: 3px solid var(--error); }
+.toast.info { border-left: 3px solid var(--accent); }
+.toast.warning { border-left: 3px solid var(--warning); }
+@keyframes slideIn { from { transform: translateX(100%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+
+/* ═══════════════════════════════════════════════════════════════ */
+/* Responsive                                                     */
+/* ═══════════════════════════════════════════════════════════════ */
+@media (max-width: 960px) {
+  .main { flex-direction: column; }
+  .panel-left { width: 100%; min-width: 0; border-right: none; border-bottom: 1px solid var(--border); }
+  .controls { padding: 0.55rem 1rem; }
+  .ctrl-input { width: 160px; }
+  .header { padding: 0.6rem 1rem; }
+  .file-list { padding: 0.8rem 1rem; }
+}
+/* ═══════════════════════════════════════════════════════════════ */
+/* Phase 5 Video Enhancement Styles                               */
+/* ═══════════════════════════════════════════════════════════════ */
+.nav-tabs {
+  display: flex;
+  background: var(--bg-secondary);
+  border-bottom: 1px solid var(--border);
+  padding: 0 1.5rem;
+  gap: 0.5rem;
+}
+.nav-tab {
+  background: transparent;
+  color: var(--text-secondary);
+  font-weight: 600;
+  padding: 0.65rem 1.2rem;
+  border-bottom: 2px solid transparent;
+  transition: all var(--transition);
+}
+.nav-tab:hover { color: var(--text-primary); }
+.nav-tab.active { color: var(--accent); border-bottom: 2px solid var(--accent); }
+.video-section {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  padding: 1.2rem 1.5rem;
+  gap: 1.2rem;
+}
+.video-grid {
+  display: grid;
+  grid-template-columns: 380px 1fr;
+  gap: 1.2rem;
+}
+@media (max-width: 1024px) {
+  .video-grid { grid-template-columns: 1fr; }
+}
+.video-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 1.2rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+.video-card-title {
+  font-size: 1rem;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 0.6rem;
+}
+.meta-table {
+  width: 100%;
+  font-size: 0.85rem;
+  border-collapse: collapse;
+}
+.meta-table td {
+  padding: 0.35rem 0.2rem;
+  border-bottom: 1px solid rgba(255,255,255,0.04);
+}
+.meta-table td:first-child { color: var(--text-secondary); width: 45%; }
+.meta-table td:last-child { font-weight: 600; text-align: right; }
+.stage-stepper {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+.stage-pill {
+  font-size: 0.72rem;
+  padding: 3px 8px;
+  border-radius: 12px;
+  background: var(--bg-input);
+  color: var(--text-muted);
+}
+.stage-pill.active {
+  background: rgba(79, 140, 255, 0.25);
+  color: var(--accent);
+  font-weight: 700;
+}
+.stage-pill.done {
+  background: rgba(34, 197, 94, 0.2);
+  color: var(--success);
+}
+.video-player-wrap {
+  background: #000;
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+  max-height: 400px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.video-player-wrap video {
+  width: 100%;
+  max-height: 400px;
+}
+.video-jobs-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.82rem;
+}
+.video-jobs-table th, .video-jobs-table td {
+  padding: 0.6rem 0.8rem;
+  border-bottom: 1px solid var(--border);
+  text-align: left;
+}
+.video-jobs-table th {
+  background: var(--bg-input);
+  color: var(--text-secondary);
+  font-size: 0.75rem;
+  text-transform: uppercase;
+}
+</style>
+</head>
+<body>
+
+<!-- ═══════════════ Header ═══════════════ -->
+<header class="header">
+  <div class="header-brand">
+    <span class="icon">✦</span>
+    <span data-i18n="app_title">AI Image Studio</span>
+    <span class="version-badge" data-i18n="version_badge">v2.0 Turbo</span>
+  </div>
+
+  <!-- Real-time GPU & VRAM Performance Monitor -->
+  <div class="gpu-monitor" id="gpuMonitor" title="GPU & VRAM Status">
+    <span id="gpuName">GPU: Detecting...</span>
+    <div style="display:flex;align-items:center;gap:0.4rem;">
+      <span style="font-size:0.75rem;color:var(--text-secondary);">VRAM:</span>
+      <div class="gpu-vram-bar"><div class="gpu-vram-fill" id="vramFill" style="width:0%"></div></div>
+      <span id="vramText" style="font-size:0.75rem;font-weight:600;">0/4 GB</span>
+    </div>
+    <span class="worker-badge worker-READY" id="workerBadge">READY</span>
+  </div>
+
+  <div class="header-status">
+    <span class="status-dot" id="statusDot"></span>
+    <span id="statusText">Checking...</span>
+  </div>
+
+  <!-- Language Switcher -->
+  <div class="lang-switch" id="langSwitch">
+    <button class="btn-lang" id="btnLangVi" onclick="setLanguage('vi')">VN</button>
+    <button class="btn-lang" id="btnLangEn" onclick="setLanguage('en')">EN</button>
+  </div>
+
+  <button class="theme-toggle" id="themeToggle" title="Toggle theme">🌙</button>
+</header>
+
+<!-- Main Navigation Tabs -->
+<div class="nav-tabs">
+  <button class="nav-tab active" id="tabImage" onclick="switchMainTab('image')" data-i18n="tab_image_upscale">🖼️ Nâng cấp Ảnh</button>
+  <button class="nav-tab" id="tabVideo" onclick="switchMainTab('video')" data-i18n="tab_video_upscale">🎬 Nâng cấp Video</button>
+</div>
+
+<!-- Image Enhancement Section -->
+<div id="imageSection" style="display:flex; flex-direction:column; flex:1;">
+
+<!-- ═══════════════ Controls ═══════════════ -->
+<div class="controls">
+  <div class="ctrl-group">
+    <span class="ctrl-label" data-i18n="folder_input">Folder:</span>
+    <input type="text" class="ctrl-input" id="inputFolder" placeholder="Default: uploads" readonly>
+    <button class="btn btn-secondary btn-sm" id="btnBrowseInput" onclick="browseFolderNative('input')" data-i18n="btn_choose_input_folder">📁 Chọn thư mục ảnh</button>
+    <button class="btn btn-secondary btn-sm" id="btnResetInputFolder" onclick="resetToUploads()" title="Về mặc định uploads" style="display:none;" data-i18n="btn_reset_folder">↺ uploads</button>
+    <button class="btn btn-secondary btn-sm" onclick="refreshCurrentFolder()" title="Refresh" data-i18n="refresh">🔄</button>
+  </div>
+  <div class="ctrl-separator"></div>
+  <div class="ctrl-group">
+    <span class="ctrl-label" data-i18n="folder_output">Output:</span>
+    <input type="text" class="ctrl-input" id="outputFolder" placeholder="Default output folder" readonly>
+    <button class="btn btn-secondary btn-sm" onclick="browseFolderNative('output')" data-i18n="browse">Browse</button>
+    <button class="btn btn-secondary btn-sm" id="btnOpenOutput" onclick="openOutputFolder()" data-i18n="open_output">📁 Mở thư mục xuất</button>
+  </div>
+  <div class="ctrl-separator"></div>
+  <div class="ctrl-group">
+    <span class="ctrl-label" data-i18n="tile_label">Tile:</span>
+    <select class="ctrl-select" id="tileSize">
+      <option value="auto" selected data-i18n="tile_auto">Auto (Khuyến nghị)</option>
+      <option value="256" data-i18n="tile_speed">256 (Tốc độ cao)</option>
+      <option value="192" data-i18n="tile_balanced">192 (Cân bằng)</option>
+      <option value="128" data-i18n="tile_safe">128 (An toàn)</option>
+      <option value="96">96</option>
+      <option value="64" data-i18n="tile_vram_save">64 (Tiết kiệm VRAM)</option>
+      <option value="32" data-i18n="tile_min">32 (Tối thiểu)</option>
+      <option value="0" data-i18n="tile_no">0 (Không chia Tile)</option>
+    </select>
+  </div>
+  <div class="ctrl-separator"></div>
+  <div class="ctrl-group">
+    <span class="ctrl-label" data-i18n="format_label">Định dạng:</span>
+    <select class="ctrl-select" id="exportFormat" onchange="toggleQualitySlider()">
+      <option value="auto" selected data-i18n="format_auto">Auto (Giữ nguyên)</option>
+      <option value="webp" data-i18n="format_webp">WEBP (Tối ưu web)</option>
+      <option value="png" data-i18n="format_png">PNG (Lossless)</option>
+      <option value="jpg" data-i18n="format_jpg">JPG (Nhỏ gọn)</option>
+    </select>
+  </div>
+  <div class="ctrl-group" id="qualityGroup" style="display:none">
+    <span class="ctrl-label" data-i18n="quality_label">Chất lượng:</span>
+    <input type="range" class="range-slider" id="exportQuality" min="50" max="100" value="95" oninput="document.getElementById('qualityVal').textContent = this.value + '%'">
+    <span id="qualityVal" style="font-size:0.8rem;font-weight:600;min-width:32px;">95%</span>
+  </div>
+  <div class="ctrl-separator"></div>
+  <button class="btn btn-primary" id="btnStart" disabled onclick="startProcessing()" data-i18n="btn_start">▶ Bắt đầu</button>
+  <button class="btn btn-danger" id="btnCancel" style="display:none" onclick="cancelProcessing()" data-i18n="btn_cancel">⏹ Hủy</button>
+</div>
+
+<!-- ═══════════════ Main ═══════════════ -->
+<div class="main">
+  <!-- Left Side: Drop Zone & Quick Actions -->
+  <div class="panel-left">
+    <div class="dropzone" id="dropzone">
+      <div class="dropzone-icon">📸</div>
+      <div class="dropzone-title" data-i18n="drop_title">Kéo & Thả ảnh hoặc Thư mục</div>
+      <div class="dropzone-text" data-i18n="drop_text">Hỗ trợ nhiều ảnh & quét đệ quy thư mục con. Tự động lưu vào uploads</div>
+    </div>
+
+    <!-- Main Native Folder Chooser Button -->
+    <button class="btn btn-secondary btn-block" id="btnChooseFolderMain" style="margin-top:0.75rem; width:100%; display:flex; align-items:center; justify-content:center; gap:0.5rem; font-weight:600; padding:0.6rem;" onclick="browseFolderNative('input')">
+      <span data-i18n="btn_choose_input_folder">Chọn thư mục ảnh</span>
+    </button>
+
+    <!-- Selected Folder Info & Actions Card -->
+    <div id="folderStatusBox" class="folder-status-box" style="display:none; margin-top:0.6rem; padding:0.65rem 0.85rem; border-radius:6px; background:var(--bg-card); border:1px solid var(--border); font-size:0.85rem;">
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.35rem;">
+        <strong style="color:var(--text-main); font-size:0.8rem; text-transform:uppercase; letter-spacing:0.5px;">📂 <span data-i18n="folder_input">Thư mục đầu vào</span></strong>
+        <span id="folderCountBadge" class="badge" style="font-size:0.75rem;">0 ảnh</span>
+      </div>
+      <div id="folderSelectedPath" style="word-break:break-all; font-family:monospace; color:var(--accent); font-size:0.8rem; margin-bottom:0.5rem;"></div>
+      <div id="folderEmptyAlert" style="display:none; color:var(--warning, #e67e22); font-size:0.78rem; margin-bottom:0.5rem;">⚠️ <span data-i18n="folder_empty_warning">Thư mục không có ảnh hợp lệ.</span></div>
+      <div style="display:flex; gap:0.4rem; justify-content:flex-end;">
+        <button class="btn btn-secondary btn-sm" style="font-size:0.75rem; padding:0.25rem 0.5rem;" onclick="browseFolderNative('input')" data-i18n="btn_change_folder">🔄 Đổi thư mục</button>
+        <button class="btn btn-secondary btn-sm" style="font-size:0.75rem; padding:0.25rem 0.5rem;" onclick="resetToUploads()" data-i18n="btn_reset_folder">↺ uploads</button>
+      </div>
+    </div>
+
+    <!-- Batch Upload Feedback Alert -->
+    <div class="batch-feedback" id="batchFeedback">
+      <div id="batchFeedbackText"></div>
+    </div>
+    
+    <div class="queue-summary-card">
+      <div class="summary-item"><span class="sum-label" data-i18n="total_files">Tổng số ảnh:</span> <span class="sum-val" id="sumTotal">0</span></div>
+      <div class="summary-item"><span class="sum-label" data-i18n="pending_files">Đang chờ:</span> <span class="sum-val" id="sumPending">0</span></div>
+      <div class="summary-item"><span class="sum-label" data-i18n="completed_files">Hoàn thành:</span> <span class="sum-val" id="sumDone">0</span></div>
+      <div class="summary-item"><span class="sum-label" data-i18n="error_files">Thất bại:</span> <span class="sum-val" id="sumError">0</span></div>
+      <div class="queue-card-actions">
+        <button class="btn btn-secondary btn-sm" id="btnRetryAll" style="display:none" onclick="retryAllFailed()" data-i18n="btn_retry_failed">🔄 Thử lại lỗi</button>
+        <button class="btn btn-secondary btn-sm" onclick="clearAll()" data-i18n="btn_clear">✕ Xóa danh sách</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Right Side: Input Images Queue -->
+  <div class="panel-right">
+    <div class="panel-header">
+      <div class="panel-title">
+        <span data-i18n="queue_title">📋 Danh sách xử lý</span>
+        <span class="badge" id="queueBadge">0 items</span>
+      </div>
+      <span class="folder-indicator" id="currentFolderLabel">Folder: uploads</span>
+    </div>
+
+    <!-- Toolbar: Filter, Search, Sort, Batch Selection & View Mode -->
+    <div class="filter-toolbar">
+      <div class="toolbar-left">
+        <!-- Live Search -->
+        <input type="text" class="search-input" id="filterSearch" placeholder="Tìm theo tên / ID..." data-i18n-ph="search_placeholder" oninput="applyFilters()">
+        
+        <!-- Status Filter -->
+        <select class="filter-select" id="filterStatus" onchange="applyFilters()">
+          <option value="all" data-i18n="filter_all">Tất cả trạng thái</option>
+          <option value="pending" data-i18n="filter_queued">Chờ xử lý</option>
+          <option value="processing" data-i18n="filter_processing">Đang xử lý</option>
+          <option value="completed" data-i18n="filter_completed">Đã hoàn thành</option>
+          <option value="error" data-i18n="filter_failed">Thất bại</option>
+          <option value="cancelled" data-i18n="filter_cancelled">Đã hủy</option>
+        </select>
+
+        <!-- Sort Option -->
+        <select class="filter-select" id="sortOption" onchange="applyFilters()">
+          <option value="name_asc" data-i18n="sort_name_asc">Tên (A-Z)</option>
+          <option value="name_desc" data-i18n="sort_name_desc">Tên (Z-A)</option>
+          <option value="size_asc" data-i18n="sort_size_asc">Dung lượng (Tăng)</option>
+          <option value="size_desc" data-i18n="sort_size_desc">Dung lượng (Giảm)</option>
+          <option value="time" data-i18n="sort_time">Thời gian thêm</option>
+          <option value="duration" data-i18n="sort_duration">Thời gian xử lý</option>
+        </select>
+      </div>
+
+      <div class="toolbar-right">
+        <!-- Batch Selection Controls -->
+        <label style="display:flex;align-items:center;gap:0.35rem;font-size:0.8rem;color:var(--text-secondary);cursor:pointer;">
+          <input type="checkbox" id="chkSelectAll" onchange="toggleSelectAll(this.checked)" style="accent-color:var(--accent);">
+          <span data-i18n="btn_select_all">Chọn tất cả</span> (<span id="selectedCount">0</span>)
+        </label>
+
+        <!-- Batch ZIP Export Dropdown -->
+        <div class="batch-dropdown">
+          <button class="btn btn-secondary btn-sm" onclick="toggleDropdown('zipMenu')" data-i18n="btn_export_zip">📦 Xuất ZIP ▾</button>
+          <div class="batch-dropdown-menu" id="zipMenu">
+            <button class="batch-dropdown-item" onclick="exportZip('all')" data-i18n="export_zip_all">📦 Xuất tất cả hoàn thành (ZIP)</button>
+            <button class="batch-dropdown-item" onclick="exportZip('selected')" data-i18n="export_zip_selected">📦 Xuất các mục đã chọn (ZIP)</button>
+          </div>
+        </div>
+
+        <!-- Processing Report Dropdown -->
+        <div class="batch-dropdown">
+          <button class="btn btn-secondary btn-sm" onclick="toggleDropdown('reportMenu')" data-i18n="btn_export_report">📊 Báo cáo ▾</button>
+          <div class="batch-dropdown-menu" id="reportMenu">
+            <button class="batch-dropdown-item" onclick="exportReport('csv', 'all')" data-i18n="export_csv">📊 Xuất CSV (Excel UTF-8)</button>
+            <button class="batch-dropdown-item" onclick="exportReport('html', 'all')" data-i18n="export_html">📊 Xuất Báo cáo HTML offline</button>
+            <button class="batch-dropdown-item" onclick="exportReport('csv', 'selected')" data-i18n="export_csv_selected">📊 Xuất CSV mục đã chọn</button>
+            <button class="batch-dropdown-item" onclick="exportReport('html', 'selected')" data-i18n="export_html_selected">📊 Xuất HTML mục đã chọn</button>
+          </div>
+        </div>
+
+        <!-- View Mode (Grid vs List) -->
+        <div style="display:flex;gap:2px;margin-left:0.3rem;">
+          <button class="view-btn active" id="btnViewGrid" onclick="setViewMode('grid')" title="Grid View">▦</button>
+          <button class="view-btn" id="btnViewList" onclick="setViewMode('list')" title="List View">☰</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Recovery Notification Banner -->
+    <div id="recoveryBanner" style="display:none; background:rgba(79,140,255,0.15); border:1px solid var(--accent); padding:0.6rem 1.2rem; margin:0.8rem 1.5rem 0 1.5rem; border-radius:var(--radius-sm); align-items:center; justify-content:space-between; font-size:0.85rem;">
+      <div style="display:flex; align-items:center; gap:0.6rem;">
+        <span style="font-size:1.2rem;">🔄</span>
+        <span id="recoveryBannerText" data-i18n="recovery_msg">Đã khôi phục các công việc bị gián đoạn từ phiên trước.</span>
+      </div>
+      <button class="btn btn-sm btn-secondary" onclick="document.getElementById('recoveryBanner').style.display='none'">✕</button>
+    </div>
+
+    <!-- Image List Container -->
+    <div class="file-list view-grid" id="fileList"></div>
+  </div>
+</div>
+
+<!-- ═══════════════ Status Bar ═══════════════ -->
+</div> <!-- /imageSection -->
+
+<!-- ═══════════════ Video Enhancement Section ═══════════════ -->
+<div id="videoSection" class="video-section" style="display:none;">
+  <div class="video-grid">
+    <!-- Left Column: Upload, Metadata & Settings -->
+    <div style="display:flex; flex-direction:column; gap:1.2rem;">
+      <!-- Video Dropzone -->
+      <div class="dropzone" id="videoDropzone" style="min-height:160px; cursor:pointer;" onclick="document.getElementById('videoFileInput').click()">
+        <div class="dropzone-icon">🎬</div>
+        <div class="dropzone-title" data-i18n="video_drop_title">Kéo & Thả Video vào đây</div>
+        <div class="dropzone-text" data-i18n="video_drop_text">Hỗ trợ MP4, MKV, MOV, AVI, WEBM. Xử lý khung hình với RealESRGAN_x4plus</div>
+        <input type="file" id="videoFileInput" accept=".mp4,.mkv,.mov,.avi,.webm" style="display:none;" onchange="handleVideoFileSelect(this.files)">
+      </div>
+
+      <!-- Video Analysis & Configuration Card -->
+      <div class="video-card" id="videoAnalysisCard" style="display:none;">
+        <div class="video-card-title">
+          <span>📹</span>
+          <span data-i18n="video_meta_title">Thông tin Video</span>
+        </div>
+        <table class="meta-table">
+          <tr><td data-i18n="video_filename">Tệp video:</td><td id="vMetaFilename">-</td></tr>
+          <tr><td data-i18n="video_resolution">Độ phân giải:</td><td id="vMetaRes">-</td></tr>
+          <tr><td data-i18n="video_target_res">Độ phân giải 4X:</td><td id="vMetaTargetRes" style="color:var(--accent);">-</td></tr>
+          <tr><td data-i18n="video_fps">Tốc độ khung hình:</td><td id="vMetaFps">-</td></tr>
+          <tr><td data-i18n="video_duration">Thời lượng:</td><td id="vMetaDuration">-</td></tr>
+          <tr><td data-i18n="video_total_frames">Tổng khung hình:</td><td id="vMetaFrames">-</td></tr>
+          <tr><td data-i18n="video_audio">Âm thanh:</td><td id="vMetaAudio">-</td></tr>
+          <tr><td data-i18n="video_storage_req">Dung lượng tạm:</td><td id="vMetaStorage">-</td></tr>
+          <tr><td data-i18n="video_disk_free">Ổ đĩa còn trống:</td><td id="vMetaFreeDisk">-</td></tr>
+        </table>
+
+        <!-- Video Processing Controls -->
+        <div style="display:flex; flex-direction:column; gap:0.6rem; margin-top:0.5rem; border-top:1px solid var(--border); padding-top:0.8rem;">
+          <div style="display:flex; align-items:center; justify-content:space-between;">
+            <span style="font-size:0.85rem; color:var(--text-secondary);" data-i18n="video_quality">Chất lượng:</span>
+            <select class="ctrl-select" id="videoQualityPreset" style="width:160px;">
+              <option value="balanced" selected data-i18n="quality_balanced">Cân bằng (CRF 22)</option>
+              <option value="high" data-i18n="quality_high">Chất lượng cao (CRF 18)</option>
+              <option value="fast" data-i18n="quality_fast">Tốc độ cao (CRF 26)</option>
+            </select>
+          </div>
+          <div style="display:flex; align-items:center; justify-content:space-between;">
+            <span style="font-size:0.85rem; color:var(--text-secondary);" data-i18n="tile_label">Tile:</span>
+            <select class="ctrl-select" id="videoTileSize" style="width:160px;">
+              <option value="auto" selected data-i18n="tile_auto">Auto (Khuyến nghị)</option>
+              <option value="256">256 (Tốc độ cao)</option>
+              <option value="192">192 (Cân bằng)</option>
+              <option value="128">128 (An toàn)</option>
+              <option value="64">64 (Tiết kiệm VRAM)</option>
+            </select>
+          </div>
+          <div style="display:flex; gap:0.5rem; margin-top:0.5rem;">
+            <button class="btn btn-primary" id="btnStartVideo" onclick="startVideoUpscaling()" style="flex:1;" data-i18n="btn_video_start">▶ Nâng cấp Video</button>
+            <button class="btn btn-warning" id="btnPauseVideo" onclick="pauseActiveVideo()" style="display:none;" data-i18n="btn_video_pause">⏸ Tạm dừng</button>
+            <button class="btn btn-primary" id="btnResumeVideo" onclick="resumeActiveVideo()" style="display:none;" data-i18n="btn_video_resume">▶ Tiếp tục</button>
+            <button class="btn btn-danger" id="btnCancelVideo" onclick="cancelActiveVideo()" style="display:none;" data-i18n="btn_video_cancel">⏹ Hủy</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Right Column: Active Video Monitor & Player & History -->
+    <div style="display:flex; flex-direction:column; gap:1.2rem;">
+      <!-- Active Progress Box -->
+      <div class="video-card" id="videoProgressCard" style="display:none;">
+        <div class="video-card-title">
+          <span>⚙️</span>
+          <span id="videoProgressTitle">Tiến độ nâng cấp Video</span>
+          <span class="badge" id="videoProgressBadge" style="margin-left:auto;">PROCESSING</span>
+        </div>
+
+        <!-- Stage Stepper -->
+        <div class="stage-stepper" id="videoStageStepper">
+          <span class="stage-pill" id="stageAnalyzing">1. Phân tích</span>
+          <span class="stage-pill" id="stageExtracting">2. Trích xuất frames</span>
+          <span class="stage-pill" id="stageProcessing">3. Nâng cấp AI</span>
+          <span class="stage-pill" id="stageReconstructing">4. Tái tạo video</span>
+          <span class="stage-pill" id="stageRestoringAudio">5. Đồng bộ âm thanh</span>
+          <span class="stage-pill" id="stageVerifying">6. Xác thực</span>
+        </div>
+
+        <!-- Frame Progress Bar -->
+        <div class="file-progress" style="height:8px; margin-top:0.5rem;">
+          <div class="file-progress-bar" id="videoProgressBar" style="width:0%;"></div>
+        </div>
+
+        <div style="display:flex; justify-content:space-between; font-size:0.82rem; color:var(--text-secondary); margin-top:0.2rem;">
+          <span id="videoProgressFrames">Khung hình: 0 / 0</span>
+          <span id="videoProgressPct" style="font-weight:700; color:var(--accent);">0%</span>
+        </div>
+
+        <div style="display:flex; justify-content:space-between; font-size:0.8rem; color:var(--text-muted); background:var(--bg-input); padding:0.5rem 0.8rem; border-radius:var(--radius-sm);">
+          <span id="videoProgressSpeed">Tốc độ: 0.0 fps</span>
+          <span id="videoProgressEta">Ước tính còn: --:--</span>
+          <span id="videoProgressTile">Tile: Auto</span>
+        </div>
+      </div>
+
+      <!-- Completed Video Preview Player Card -->
+      <div class="video-card" id="videoPlayerCard" style="display:none;">
+        <div class="video-card-title">
+          <span>🎉</span>
+          <span>Xem trước Video kết quả (4X)</span>
+        </div>
+        <div class="video-player-wrap">
+          <video id="videoPlayer" controls preload="metadata"></video>
+        </div>
+        <div style="display:flex; gap:0.6rem; flex-wrap:wrap;">
+          <a class="btn btn-primary" id="btnDownloadVideo" href="#" download data-i18n="btn_download_video">📥 Tải Video kết quả</a>
+          <button class="btn btn-secondary" onclick="exportVideoReport('csv')" data-i18n="btn_video_report_csv">📊 Báo cáo CSV</button>
+          <button class="btn btn-secondary" onclick="exportVideoReport('html')" data-i18n="btn_video_report_html">📊 Báo cáo HTML</button>
+        </div>
+      </div>
+
+      <!-- Video Queue / History Card -->
+      <div class="video-card">
+        <div class="video-card-title">
+          <span>📑</span>
+          <span>Danh sách Video đã xử lý</span>
+          <button class="btn btn-secondary btn-sm" onclick="loadVideoJobs()" style="margin-left:auto;">🔄 Làm mới</button>
+        </div>
+        <div style="overflow-x:auto;">
+          <table class="video-jobs-table">
+            <thead>
+              <tr>
+                <th>Video</th>
+                <th>Độ phân giải</th>
+                <th>Frames</th>
+                <th>Thời gian</th>
+                <th>Trạng thái</th>
+                <th>Hành động</th>
+              </tr>
+            </thead>
+            <tbody id="videoJobsBody">
+              <tr><td colspan="6" style="text-align:center; color:var(--text-muted); padding:1rem;">Chưa có video nào. Kéo thả video để nâng cấp.</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="statusbar">
+  <span id="statusMessage" data-i18n="status_ready">Sẵn sàng</span>
+  <div class="statusbar-progress">
+    <div class="statusbar-progress-bar" id="overallProgress"></div>
+  </div>
+  <span id="progressText"></span>
+</div>
+
+<!-- ═══════════════ Folder Browser Modal ═══════════════ -->
+<div class="modal-overlay" id="folderModal">
+  <div class="modal">
+    <div class="modal-header">
+      <span data-i18n="modal_browse_title">📁 Duyệt thư mục</span>
+      <button class="btn btn-secondary btn-sm" onclick="closeFolderBrowser()">✕</button>
+    </div>
+    <div class="modal-path">
+      <button class="btn btn-secondary btn-sm" id="folderUp" onclick="folderGoUp()">⬆ Lên</button>
+      <span id="folderCurrentPath">My Computer</span>
+    </div>
+    <div class="modal-body" id="folderList"></div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeFolderBrowser()" data-i18n="btn_cancel_modal">Hủy</button>
+      <button class="btn btn-primary" id="folderSelectBtn" onclick="selectFolder()" data-i18n="btn_select_this_folder">Chọn thư mục này</button>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════ Quick Preview Modal ═══════════════ -->
+<div class="modal-overlay" id="previewModal">
+  <div class="modal" style="width: 720px; max-width: 95vw; max-height: 85vh;">
+    <div class="modal-header">
+      <span data-i18n="preview_modal_title">⚡ Quick Preview (Real-ESRGAN x4plus — Patch 256x256)</span>
+      <button class="btn btn-secondary btn-sm" onclick="closePreviewModal()">✕</button>
+    </div>
+    <div class="modal-body" style="padding: 1.2rem;">
+      <div id="previewLoading" style="text-align:center; padding:2rem; display:none;">
+        <div style="font-size:2rem; margin-bottom:0.8rem;">⚙️</div>
+        <div style="font-weight:600;" data-i18n="preview_running">Đang chạy suy luận Real-ESRGAN x4plus trên GPU...</div>
+        <div style="font-size:0.82rem; color:var(--text-secondary); margin-top:0.3rem;">Persistent In-Memory AI Worker</div>
+      </div>
+      <div id="previewContent" style="display:none;">
+        <div style="display:flex; gap:1.2rem; justify-content:center; flex-wrap:wrap;">
+          <div style="flex:1; min-width:260px; text-align:center;">
+            <div style="font-size:0.85rem; font-weight:600; margin-bottom:0.5rem; color:var(--text-secondary);" data-i18n="preview_orig_label">GỐC (Patch 256×256)</div>
+            <div style="background:var(--bg-primary); border:1px solid var(--border); border-radius:var(--radius-sm); height:280px; display:flex; align-items:center; justify-content:center; overflow:hidden;">
+              <img id="prevImgOrig" src="" alt="Original Crop" style="max-width:100%; max-height:100%; object-fit:contain;">
+            </div>
+          </div>
+          <div style="flex:1; min-width:260px; text-align:center;">
+            <div style="font-size:0.85rem; font-weight:600; margin-bottom:0.5rem; color:var(--accent);" data-i18n="preview_enh_label">KẾT QUẢ AI (1024×1024 - 4X)</div>
+            <div style="background:var(--bg-primary); border:1px solid var(--border); border-radius:var(--radius-sm); height:280px; display:flex; align-items:center; justify-content:center; overflow:hidden;">
+              <img id="prevImgEnh" src="" alt="Enhanced Patch" style="max-width:100%; max-height:100%; object-fit:contain;">
+            </div>
+          </div>
+        </div>
+        <div style="margin-top:1rem; background:var(--bg-input); padding:0.6rem 1rem; border-radius:var(--radius-sm); font-size:0.8rem; display:flex; justify-content:space-between; flex-wrap:wrap; gap:0.5rem;">
+          <span id="prevMetaCoord">Vị trí crop: Center</span>
+          <span id="prevMetaTime">Thời gian AI: -</span>
+          <span id="prevMetaRes">Độ phân giải: 1024x1024</span>
+        </div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closePreviewModal()" data-i18n="btn_close">Đóng</button>
+      <button class="btn btn-primary" id="btnPreviewProcessSingle" onclick="processFromPreview()" data-i18n="preview_btn_process">▶ Nâng cấp toàn bộ ảnh này</button>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════ Per-Job Log Modal ═══════════════ -->
+<div class="modal-overlay" id="modalLog">
+  <div class="modal" style="width: 760px; max-width: 95vw; max-height: 85vh;">
+    <div class="modal-header">
+      <span id="logModalTitle">📋 Nhật ký xử lý Job</span>
+      <button class="btn btn-secondary btn-sm" onclick="closeLogModal()">✕</button>
+    </div>
+    <div class="modal-body" style="background: #090a10; padding: 1rem; font-family: monospace; font-size: 0.82rem; white-space: pre-wrap; overflow-y: auto; color: #a6accd; max-height: 60vh;" id="logModalContent">
+      Đang tải log...
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary btn-sm" onclick="refreshCurrentLog()" data-i18n="btn_refresh_log">🔄 Làm mới</button>
+      <button class="btn btn-secondary btn-sm" onclick="closeLogModal()" data-i18n="btn_close">Đóng</button>
+    </div>
+  </div>
+</div>
+
+<!-- Toasts -->
+<div class="toast-container" id="toastContainer"></div>
+
+<script>
+/* ═══════════════════════════════════════════════════════════════ */
+/* I18N Localization Dictionary (Vietnamese & English)            */
+/* ═══════════════════════════════════════════════════════════════ */
+const I18N = {
+  vi: {
+    app_title: "AI Image Studio",
+    version_badge: "v2.0 Turbo",
+    gpu_ready: "GPU sẵn sàng",
+    model_missing: "Thiếu model",
+    cuda_unavailable: "Không có CUDA",
+    offline: "Ngoại tuyến",
+    folder_input: "Thư mục đầu vào:",
+    folder_output: "Thư mục xuất:",
+    browse: "Duyệt",
+    refresh: "🔄",
+    open_output: "📁 Mở thư mục xuất",
+    tile_label: "Tile:",
+    tile_auto: "Auto (Khuyến nghị)",
+    tile_speed: "256 (Tốc độ cao)",
+    tile_balanced: "192 (Cân bằng)",
+    tile_safe: "128 (An toàn)",
+    tile_vram_save: "64 (Tiết kiệm VRAM)",
+    tile_min: "32 (Tối thiểu)",
+    tile_no: "0 (Không chia Tile)",
+    format_label: "Định dạng:",
+    format_auto: "Auto (Giữ nguyên)",
+    format_webp: "WEBP (Tối ưu web)",
+    format_png: "PNG (Lossless)",
+    format_jpg: "JPG (Nhỏ gọn)",
+    quality_label: "Chất lượng:",
+    btn_start: "▶ Bắt đầu nâng cấp",
+    btn_cancel: "⏹ Hủy",
+    drop_title: "Kéo & Thả ảnh hoặc Thư mục",
+    drop_text: "Hỗ trợ nhiều ảnh & quét đệ quy thư mục con. Tự động lưu vào uploads",
+    total_files: "Tổng số ảnh:",
+    pending_files: "Đang chờ:",
+    completed_files: "Hoàn thành:",
+    error_files: "Thất bại:",
+    btn_retry_failed: "🔄 Thử lại lỗi",
+    btn_clear: "✕ Xóa danh sách",
+    queue_title: "📋 Danh sách xử lý",
+    search_placeholder: "Tìm theo tên / ID...",
+    filter_all: "Tất cả trạng thái",
+    filter_queued: "Chờ xử lý",
+    filter_processing: "Đang xử lý",
+    filter_completed: "Đã hoàn thành",
+    filter_failed: "Thất bại",
+    filter_cancelled: "Đã hủy",
+    sort_name_asc: "Tên (A-Z)",
+    sort_name_desc: "Tên (Z-A)",
+    sort_size_asc: "Dung lượng (Tăng)",
+    sort_size_desc: "Dung lượng (Giảm)",
+    sort_time: "Thời gian thêm",
+    sort_duration: "Thời gian xử lý",
+    btn_select_all: "Chọn tất cả",
+    btn_export_zip: "📦 Xuất ZIP ▾",
+    btn_export_report: "📊 Báo cáo ▾",
+    export_zip_all: "📦 Xuất tất cả hoàn thành (ZIP)",
+    export_zip_selected: "📦 Xuất các mục đã chọn (ZIP)",
+    export_csv: "📊 Xuất CSV (Excel UTF-8)",
+    export_html: "📊 Xuất Báo cáo HTML offline",
+    export_csv_selected: "📊 Xuất CSV mục đã chọn",
+    export_html_selected: "📊 Xuất HTML mục đã chọn",
+    recovery_msg: "Đã khôi phục các công việc bị gián đoạn từ phiên trước.",
+    status_ready: "Sẵn sàng",
+    status_pending: "⏳ Chờ xử lý",
+    status_validating: "🔍 Đang kiểm tra",
+    status_processing: "⚙️ Đang xử lý",
+    status_retry: "🔄 Chờ thử lại",
+    status_completed: "✅ Hoàn thành",
+    status_error: "❌ Thất bại",
+    status_cancelled: "🚫 Đã hủy",
+    status_cancel_requested: "⏳ Đang hủy...",
+    modal_browse_title: "📁 Duyệt thư mục",
+    btn_cancel_modal: "Hủy",
+    btn_select_this_folder: "Chọn thư mục này",
+    preview_modal_title: "⚡ Quick Preview (Real-ESRGAN x4plus — Patch 256x256)",
+    preview_running: "Đang chạy suy luận Real-ESRGAN x4plus trên GPU...",
+    preview_orig_label: "GỐC (Patch 256×256)",
+    preview_enh_label: "KẾT QUẢ AI (1024×1024 - 4X)",
+    preview_btn_process: "▶ Nâng cấp toàn bộ ảnh này",
+    btn_close: "Đóng",
+    btn_refresh_log: "🔄 Làm mới",
+    empty_queue_text: "Chưa có ảnh trong hàng đợi. Kéo thả ảnh hoặc thư mục vào để bắt đầu.",
+    batch_feedback_summary: "Đã nạp {valid} ảnh hợp lệ ({duplicates} trùng lặp, {too_large} quá lớn, {corrupt} lỗi, {unsupported} không hỗ trợ).",
+    btn_reprocess: "🔁 Xử lý lại",
+    tab_image_upscale: "🖼️ Nâng cấp Ảnh",
+    tab_video_upscale: "🎬 Nâng cấp Video",
+    video_drop_title: "Kéo & Thả Video vào đây",
+    video_drop_text: "Hỗ trợ MP4, MKV, MOV, AVI, WEBM. Xử lý khung hình với RealESRGAN_x4plus",
+    video_meta_title: "Thông tin Video",
+    video_filename: "Tệp video:",
+    video_resolution: "Độ phân giải:",
+    video_target_res: "Độ phân giải 4X:",
+    video_fps: "Tốc độ khung hình:",
+    video_duration: "Thời lượng:",
+    video_total_frames: "Tổng khung hình:",
+    video_audio: "Âm thanh:",
+    video_storage_req: "Dung lượng tạm:",
+    video_disk_free: "Ổ đĩa còn trống:",
+    video_quality: "Chất lượng:",
+    quality_balanced: "Cân bằng (CRF 22)",
+    quality_high: "Chất lượng cao (CRF 18)",
+    quality_fast: "Tốc độ cao (CRF 26)",
+    btn_video_start: "▶ Bắt đầu nâng cấp Video",
+    btn_video_pause: "⏸ Tạm dừng",
+    btn_video_resume: "▶ Tiếp tục",
+    btn_video_cancel: "⏹ Hủy",
+    btn_download_video: "📥 Tải Video kết quả",
+    btn_video_report_csv: "📊 Báo cáo CSV",
+    btn_video_report_html: "📊 Báo cáo HTML",
+    btn_choose_input_folder: "📁 Chọn thư mục ảnh",
+    btn_change_folder: "🔄 Đổi thư mục",
+    btn_reset_folder: "↺ uploads",
+    folder_empty_warning: "Thư mục không có ảnh hợp lệ hoặc định dạng không được hỗ trợ (JPG, PNG, WebP, BMP).",
+    folder_loaded_success: "Đã tìm thấy {count} ảnh hợp lệ từ thư mục.",
+    folder_dialog_opening: "Đang mở hộp thoại...",
+    folder_scanning: "Đang quét ảnh trong thư mục...",
+    folder_cancelled: "Đã đóng hoặc hủy hộp thoại chọn thư mục.",
+    remote_browse_warning: "Hộp thoại Windows native chỉ mở trên máy chủ local. Vui lòng kéo/thả hoặc tải ảnh lên.",
+    output_folder_updated: "Đã cập nhật thư mục xuất.",
+    images_count_suffix: "ảnh"
+  },
+  en: {
+    app_title: "AI Image Studio",
+    version_badge: "v2.0 Turbo",
+    gpu_ready: "GPU Ready",
+    model_missing: "Model missing",
+    cuda_unavailable: "CUDA unavailable",
+    offline: "Offline",
+    folder_input: "Input Folder:",
+    folder_output: "Output Folder:",
+    browse: "Browse",
+    refresh: "🔄",
+    open_output: "📁 Open Output",
+    tile_label: "Tile:",
+    tile_auto: "Auto (Recommended)",
+    tile_speed: "256 (High Speed)",
+    tile_balanced: "192 (Balanced)",
+    tile_safe: "128 (Safe)",
+    tile_vram_save: "64 (VRAM Saving)",
+    tile_min: "32 (Minimum)",
+    tile_no: "0 (No Tile)",
+    format_label: "Format:",
+    format_auto: "Auto (Preserve)",
+    format_webp: "WEBP (Web optimized)",
+    format_png: "PNG (Lossless)",
+    format_jpg: "JPG (Compact)",
+    quality_label: "Quality:",
+    btn_start: "▶ Start Upscaling",
+    btn_cancel: "⏹ Cancel",
+    drop_title: "Drag & Drop Images or Folders",
+    drop_text: "Supports multi-images & recursive folders. Automatically saved to uploads",
+    total_files: "Total Files:",
+    pending_files: "Pending:",
+    completed_files: "Completed:",
+    error_files: "Errors:",
+    btn_retry_failed: "🔄 Retry Failed",
+    btn_clear: "✕ Clear List",
+    queue_title: "📋 Image Queue",
+    search_placeholder: "Search by name / ID...",
+    filter_all: "All Statuses",
+    filter_queued: "Queued",
+    filter_processing: "Processing",
+    filter_completed: "Completed",
+    filter_failed: "Failed",
+    filter_cancelled: "Cancelled",
+    sort_name_asc: "Name (A-Z)",
+    sort_name_desc: "Name (Z-A)",
+    sort_size_asc: "Size (Asc)",
+    sort_size_desc: "Size (Desc)",
+    sort_time: "Time Added",
+    sort_duration: "Processing Time",
+    btn_select_all: "Select All",
+    btn_export_zip: "📦 Export ZIP ▾",
+    btn_export_report: "📊 Report ▾",
+    export_zip_all: "📦 Export All Completed (ZIP)",
+    export_zip_selected: "📦 Export Selected (ZIP)",
+    export_csv: "📊 Export CSV (Excel UTF-8)",
+    export_html: "📊 Export Offline HTML Report",
+    export_csv_selected: "📊 Export Selected to CSV",
+    export_html_selected: "📊 Export Selected to HTML",
+    recovery_msg: "Recovered interrupted jobs from previous session.",
+    status_ready: "Ready",
+    status_pending: "⏳ Queued",
+    status_validating: "🔍 Validating",
+    status_processing: "⚙️ Processing",
+    status_retry: "🔄 Retrying",
+    status_completed: "✅ Completed",
+    status_error: "❌ Failed",
+    status_cancelled: "🚫 Cancelled",
+    status_cancel_requested: "⏳ Cancelling...",
+    modal_browse_title: "📁 Browse Folder",
+    btn_cancel_modal: "Cancel",
+    btn_select_this_folder: "Select This Folder",
+    preview_modal_title: "⚡ Quick Preview (Real-ESRGAN x4plus — Patch 256x256)",
+    preview_running: "Running Real-ESRGAN x4plus GPU inference...",
+    preview_orig_label: "ORIGINAL (Patch 256×256)",
+    preview_enh_label: "AI RESULT (1024×1024 - 4X)",
+    preview_btn_process: "▶ Upscale Entire Image",
+    btn_close: "Close",
+    btn_refresh_log: "🔄 Refresh",
+    empty_queue_text: "No images in queue. Drag & drop images or folders to begin.",
+    batch_feedback_summary: "Loaded {valid} valid images ({duplicates} duplicates, {too_large} too large, {corrupt} corrupt, {unsupported} unsupported).",
+    btn_reprocess: "🔁 Reprocess",
+    tab_image_upscale: "🖼️ Image Upscale",
+    tab_video_upscale: "🎬 Video Upscale",
+    video_drop_title: "Drag & Drop Video here",
+    video_drop_text: "Supports MP4, MKV, MOV, AVI, WEBM. Frame upscaling with RealESRGAN_x4plus",
+    video_meta_title: "Video Information",
+    video_filename: "Video File:",
+    video_resolution: "Resolution:",
+    video_target_res: "4X Target Res:",
+    video_fps: "Frame Rate:",
+    video_duration: "Duration:",
+    video_total_frames: "Total Frames:",
+    video_audio: "Audio:",
+    video_storage_req: "Temp Storage:",
+    video_disk_free: "Free Disk Space:",
+    video_quality: "Quality:",
+    quality_balanced: "Balanced (CRF 22)",
+    quality_high: "High Quality (CRF 18)",
+    quality_fast: "Fast / Smaller (CRF 26)",
+    btn_video_start: "▶ Start Video Upscaling",
+    btn_video_pause: "⏸ Pause",
+    btn_video_resume: "▶ Resume",
+    btn_video_cancel: "⏹ Cancel",
+    btn_download_video: "📥 Download Enhanced Video",
+    btn_video_report_csv: "📊 CSV Report",
+    btn_video_report_html: "📊 HTML Report",
+    btn_choose_input_folder: "📁 Choose Image Folder",
+    btn_change_folder: "🔄 Change Folder",
+    btn_reset_folder: "↺ uploads",
+    folder_empty_warning: "Selected folder is empty or has no supported images (JPG, PNG, WebP, BMP).",
+    folder_loaded_success: "Loaded {count} valid image(s) from folder.",
+    folder_dialog_opening: "Opening dialog...",
+    folder_scanning: "Scanning folder for images...",
+    folder_cancelled: "Folder selection dialog closed or cancelled.",
+    remote_browse_warning: "Windows folder dialog only opens on the local host machine. Please upload or drag & drop files instead.",
+    output_folder_updated: "Output folder updated.",
+    images_count_suffix: "images"
+  }
+};
+
+/* ═══════════════════════════════════════════════════════════════ */
+/* Application State                                              */
+/* ═══════════════════════════════════════════════════════════════ */
+const fileQueue = new Map(); // job_id -> file data
+const selectedJobIds = new Set();
+let isProcessing = false;
+let evtSource = null;
+let currentInputFolder = '';
+let currentOutputFolder = '';
+let folderBrowserMode = ''; // 'input' or 'output'
+let folderBrowserPath = '';
+
+// Preferences from localStorage with fallbacks
+let currentLang = localStorage.getItem('ais_language') || 'vi';
+let currentViewMode = localStorage.getItem('ais_view_mode') || 'grid';
+
+function t(key, params = {}) {
+  const dict = I18N[currentLang] || I18N.vi;
+  let str = dict[key] || (I18N.en && I18N.en[key]) || key;
+  for (const [k, v] of Object.entries(params)) {
+    str = str.replace(new RegExp(`\\{${k}\\}`, 'g'), v);
+  }
+  return str;
+}
+
+function setLanguage(lang) {
+  if (!['vi', 'en'].includes(lang)) lang = 'vi';
+  currentLang = lang;
+  localStorage.setItem('ais_language', lang);
+  document.documentElement.lang = lang;
+
+  document.getElementById('btnLangVi').classList.toggle('active', lang === 'vi');
+  document.getElementById('btnLangEn').classList.toggle('active', lang === 'en');
+
+  // Update text for all elements with data-i18n
+  document.querySelectorAll('[data-i18n]').forEach(el => {
+    const k = el.getAttribute('data-i18n');
+    el.textContent = t(k);
+  });
+
+  // Update placeholder for inputs
+  document.querySelectorAll('[data-i18n-ph]').forEach(el => {
+    const k = el.getAttribute('data-i18n-ph');
+    el.placeholder = t(k);
+  });
+
+  renderFileList();
+  updateQueueInfo();
+}
+
+function setViewMode(mode) {
+  currentViewMode = mode === 'list' ? 'list' : 'grid';
+  localStorage.setItem('ais_view_mode', currentViewMode);
+
+  const listEl = document.getElementById('fileList');
+  if (listEl) {
+    listEl.className = 'file-list view-' + currentViewMode;
+  }
+  document.getElementById('btnViewGrid').classList.toggle('active', currentViewMode === 'grid');
+  document.getElementById('btnViewList').classList.toggle('active', currentViewMode === 'list');
+  renderFileList();
+}
+
+function toggleDropdown(menuId) {
+  const menu = document.getElementById(menuId);
+  if (!menu) return;
+  const isShown = menu.classList.contains('show');
+  document.querySelectorAll('.batch-dropdown-menu').forEach(m => m.classList.remove('show'));
+  if (!isShown) menu.classList.add('show');
+}
+
+// Close dropdowns on click outside
+window.addEventListener('click', (e) => {
+  if (!e.target.closest('.batch-dropdown')) {
+    document.querySelectorAll('.batch-dropdown-menu').forEach(m => m.classList.remove('show'));
+  }
+});
+
+/* ═══════════════════════════════════════════════════════════════ */
+/* Init                                                           */
+/* ═══════════════════════════════════════════════════════════════ */
+document.addEventListener('DOMContentLoaded', async () => {
+  setLanguage(currentLang);
+  setViewMode(currentViewMode);
+  checkStatus();
+  updateGpuStats();
+  setInterval(updateGpuStats, 2500);
+  setupDragDrop();
+  connectSSE();
+  await initDefaultDirectories();
+});
+
+async function updateGpuStats() {
+  try {
+    const r = await fetch('/api/gpu-stats');
+    if (!r.ok) return;
+    const d = await r.json();
+
+    if (d.gpu && d.gpu.gpu_name) {
+      document.getElementById('gpuName').textContent = d.gpu.gpu_name;
+    }
+
+    if (d.gpu && d.gpu.total_gb > 0) {
+      const usedPct = d.gpu.used_pct || Math.round((d.gpu.used_gb / d.gpu.total_gb) * 100);
+      document.getElementById('vramFill').style.width = usedPct + '%';
+      document.getElementById('vramText').textContent = `${d.gpu.used_gb}/${d.gpu.total_gb} GB (${usedPct}%)`;
+    }
+
+    const badge = document.getElementById('workerBadge');
+    if (badge && d.state) {
+      badge.textContent = d.state;
+      badge.className = 'worker-badge worker-' + d.state;
+    }
+  } catch(e) {}
+}
+
+function toggleQualitySlider() {
+  const fmt = document.getElementById('exportFormat').value;
+  const qg = document.getElementById('qualityGroup');
+  if (fmt === 'jpg' || fmt === 'webp') {
+    qg.style.display = 'flex';
+  } else {
+    qg.style.display = 'none';
+  }
+}
+
+async function checkStatus() {
+  try {
+    const r = await fetch('/api/status');
+    const d = await r.json();
+    const dot = document.getElementById('statusDot');
+    const txt = document.getElementById('statusText');
+    if (d.model_ok && d.cuda_ok) {
+      dot.classList.add('ok');
+      txt.textContent = d.gpu_name || t('gpu_ready');
+    } else {
+      txt.textContent = !d.model_ok ? t('model_missing') : t('cuda_unavailable');
+    }
+
+    if (d.recovery && d.recovery.recovered_count > 0) {
+      const banner = document.getElementById('recoveryBanner');
+      const bannerTxt = document.getElementById('recoveryBannerText');
+      if (banner && bannerTxt) {
+        bannerTxt.textContent = `${t('recovery_msg')} (${d.recovery.recovered_count})`;
+        banner.style.display = 'flex';
+      }
+    }
+  } catch(e) {
+    document.getElementById('statusText').textContent = t('offline');
+  }
+}
+
+async function initDefaultDirectories() {
+  try {
+    const rOut = await fetch('/api/default-output-dir');
+    const dOut = await rOut.json();
+    currentOutputFolder = dOut.output_dir || '';
+    document.getElementById('outputFolder').value = currentOutputFolder;
+  } catch(e) {}
+
+  try {
+    const rIn = await fetch('/api/default-input-dir');
+    const dIn = await rIn.json();
+    currentInputFolder = dIn.input_dir || '';
+    document.getElementById('inputFolder').value = currentInputFolder;
+    document.getElementById('currentFolderLabel').textContent = `Folder: ${currentInputFolder}`;
+    if (currentInputFolder) {
+      await loadImagesFromFolder(currentInputFolder);
+    }
+  } catch(e) {}
+}
+
+/* ═══════════════════════════════════════════════════════════════ */
+/* Theme                                                          */
+/* ═══════════════════════════════════════════════════════════════ */
+document.getElementById('themeToggle').addEventListener('click', () => {
+  const html = document.documentElement;
+  const btn = document.getElementById('themeToggle');
+  if (html.dataset.theme === 'dark') {
+    html.dataset.theme = 'light';
+    btn.textContent = '☀️';
+  } else {
+    html.dataset.theme = 'dark';
+    btn.textContent = '🌙';
+  }
+});
+
+/* ═══════════════════════════════════════════════════════════════ */
+/* Recursive Folder & Multi-File Drag & Drop                      */
+/* ═══════════════════════════════════════════════════════════════ */
+function setupDragDrop() {
+  const dz = document.getElementById('dropzone');
+
+  ['dragenter', 'dragover'].forEach(evt => {
+    dz.addEventListener(evt, (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      dz.classList.add('dragover');
+    });
+  });
+  ['dragleave', 'drop'].forEach(evt => {
+    dz.addEventListener(evt, (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      dz.classList.remove('dragover');
+    });
+  });
+
+  dz.addEventListener('drop', async (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    dz.classList.remove('dragover');
+
+    const items = e.dataTransfer.items;
+    const filesToUpload = [];
+
+    if (items && items.length > 0 && items[0].webkitGetAsEntry) {
+      const entries = [];
+      for (let i = 0; i < items.length; i++) {
+        const entry = items[i].webkitGetAsEntry();
+        if (entry) entries.push(entry);
+      }
+      for (const entry of entries) {
+        const found = await scanEntryRecursive(entry);
+        filesToUpload.push(...found);
+      }
+    } else {
+      for (let i = 0; i < e.dataTransfer.files.length; i++) {
+        filesToUpload.push(e.dataTransfer.files[i]);
+      }
+    }
+
+    const validImages = filesToUpload.filter(f => {
+      const ext = f.name.split('.').pop().toLowerCase();
+      return ['jpg', 'jpeg', 'png', 'webp', 'bmp'].includes(ext);
+    });
+
+    if (validImages.length > 0) {
+      await uploadFilesBatched(validImages);
+    } else {
+      toast(t('empty_queue_text'), 'warning');
+    }
+  });
+}
+
+async function scanEntryRecursive(entry) {
+  const results = [];
+  if (entry.isFile) {
+    const file = await new Promise((resolve) => entry.file(resolve, () => resolve(null)));
+    if (file) results.push(file);
+  } else if (entry.isDirectory) {
+    const dirReader = entry.createReader();
+    const readEntries = async () => {
+      return new Promise((resolve) => {
+        dirReader.readEntries((entries) => resolve(entries), () => resolve([]));
+      });
+    };
+    let entries = await readEntries();
+    while (entries.length > 0) {
+      for (const child of entries) {
+        const sub = await scanEntryRecursive(child);
+        results.push(...sub);
+      }
+      entries = await readEntries(); // Continue reading chunks until empty
+    }
+  }
+  return results;
+}
+
+async function uploadFilesBatched(files, chunkSize = 50) {
+  toast(`Uploading ${files.length} file(s)...`, 'info');
+  let validTotal = 0, dupTotal = 0, corruptTotal = 0, unsuppTotal = 0, tooLargeTotal = 0;
+  let uploadErrors = [];
+
+  for (let i = 0; i < files.length; i += chunkSize) {
+    const chunk = files.slice(i, i + chunkSize);
+    const fd = new FormData();
+    chunk.forEach(f => fd.append('files', f));
+
+    try {
+      const r = await fetch('/api/upload', { method: 'POST', body: fd });
+      const d = await r.json();
+      if (d.files && d.files.length > 0) {
+        d.files.forEach(f => {
+          fileQueue.set(f.job_id, {
+            ...f,
+            status: f.status || 'pending',
+            error: null,
+            elapsed: null,
+            is_oom: false
+          });
+        });
+      }
+      if (d.summary) {
+        validTotal += d.summary.valid || 0;
+        dupTotal += d.summary.duplicates || 0;
+        corruptTotal += d.summary.corrupt || 0;
+        unsuppTotal += d.summary.unsupported || 0;
+        tooLargeTotal += d.summary.too_large || 0;
+      }
+      if (d.errors && d.errors.length > 0) {
+        uploadErrors.push(...d.errors);
+      }
+    } catch(e) {
+      toast('Upload error: ' + e.message, 'error');
+    }
+  }
+
+  // Display feedback badge in panel-left
+  const fb = document.getElementById('batchFeedback');
+  const fbTxt = document.getElementById('batchFeedbackText');
+  if (fb && fbTxt) {
+    fbTxt.innerHTML = t('batch_feedback_summary', {
+      valid: `<strong>${validTotal}</strong>`,
+      duplicates: `<strong>${dupTotal}</strong>`,
+      too_large: `<strong>${tooLargeTotal}</strong>`,
+      corrupt: `<strong>${corruptTotal}</strong>`,
+      unsupported: `<strong>${unsuppTotal}</strong>`
+    });
+    fb.style.display = 'block';
+  }
+
+  renderFileList();
+  updateQueueInfo();
+
+  if (validTotal > 0 || (dupTotal === 0 && corruptTotal === 0 && tooLargeTotal === 0 && unsuppTotal === 0)) {
+    toast(t('batch_feedback_summary', {
+      valid: validTotal,
+      duplicates: dupTotal,
+      too_large: tooLargeTotal,
+      corrupt: corruptTotal,
+      unsupported: unsuppTotal
+    }), 'success');
+  } else {
+    if (tooLargeTotal > 0) {
+      toast(`${tooLargeTotal} file(s) exceed resolution/size limit.`, 'warning');
+    } else if (corruptTotal > 0) {
+      toast(`${corruptTotal} file(s) are corrupt or unreadable.`, 'error');
+    } else {
+      toast(t('batch_feedback_summary', {
+        valid: validTotal,
+        duplicates: dupTotal,
+        too_large: tooLargeTotal,
+        corrupt: corruptTotal,
+        unsupported: unsuppTotal
+      }), 'warning');
+    }
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════════ */
+/* Folder Operations                                              */
+/* ═══════════════════════════════════════════════════════════════ */
+async function loadImagesFromFolder(path, clearPrevious = false) {
+  try {
+    if (clearPrevious) {
+      fileQueue.clear();
+      selectedJobIds.clear();
+      renderFileList();
+      updateQueueInfo();
+    }
+    toast(t('folder_scanning'), 'info');
+    const r = await fetch('/api/select-folder', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ path: path || '' })
+    });
+    const d = await r.json();
+    if (d.error) {
+      toast(d.error, 'error');
+      return;
+    }
+
+    const badge = document.getElementById('folderCountBadge');
+    const alertEmpty = document.getElementById('folderEmptyAlert');
+
+    if (d.files) {
+      d.files.forEach(f => {
+        if (!fileQueue.has(f.job_id)) {
+          fileQueue.set(f.job_id, f);
+        } else {
+          const existing = fileQueue.get(f.job_id);
+          fileQueue.set(f.job_id, { ...f, ...existing });
+        }
+      });
+      renderFileList();
+      updateQueueInfo();
+
+      const count = d.files.length;
+      if (badge) badge.textContent = `${count} ${t('images_count_suffix') || 'ảnh'}`;
+
+      if (count === 0) {
+        if (alertEmpty) alertEmpty.style.display = 'block';
+        toast(t('folder_empty_warning'), 'warning');
+      } else {
+        if (alertEmpty) alertEmpty.style.display = 'none';
+        toast(t('folder_loaded_success', { count: count }), 'info');
+      }
+    }
+  } catch(e) {
+    toast('Error loading folder: ' + e.message, 'error');
+  }
+}
+
+async function resetToUploads() {
+  currentInputFolder = '';
+  document.getElementById('inputFolder').value = '';
+  document.getElementById('currentFolderLabel').textContent = 'Folder: uploads';
+  const box = document.getElementById('folderStatusBox');
+  if (box) box.style.display = 'none';
+  const resetBtn = document.getElementById('btnResetInputFolder');
+  if (resetBtn) resetBtn.style.display = 'none';
+  toast('Đã chuyển về thư mục mặc định uploads', 'info');
+  await loadImagesFromFolder('', true);
+}
+
+async function refreshCurrentFolder() {
+  const path = currentInputFolder || document.getElementById('inputFolder').value;
+  toast('Refreshing folder...', 'info');
+  await loadImagesFromFolder(path === 'Default: uploads' ? '' : path, true);
+}
+
+/* ═══════════════════════════════════════════════════════════════ */
+/* Filters, Live Search & Sorting                                 */
+/* ═══════════════════════════════════════════════════════════════ */
+function applyFilters() {
+  renderFileList();
+}
+
+function getFilteredAndSortedJobs() {
+  const searchTerm = (document.getElementById('filterSearch').value || '').trim().toLowerCase();
+  const statusFilter = document.getElementById('filterStatus').value;
+  const sortOption = document.getElementById('sortOption').value;
+
+  let list = Array.from(fileQueue.values());
+
+  // 1. Status Filter
+  if (statusFilter && statusFilter !== 'all') {
+    list = list.filter(item => {
+      const st = (item.status || '').toLowerCase();
+      if (statusFilter === 'pending') return st === 'pending' || st === 'queued' || st === 'retry_wait';
+      if (statusFilter === 'processing') return st === 'processing' || st === 'validating';
+      if (statusFilter === 'completed') return st === 'completed';
+      if (statusFilter === 'error') return st === 'error' || st === 'failed';
+      if (statusFilter === 'cancelled') return st === 'cancelled' || st === 'cancel_requested';
+      return st === statusFilter;
+    });
+  }
+
+  // 2. Search Filter (by filename or job_id)
+  if (searchTerm) {
+    list = list.filter(item => {
+      const fn = (item.filename || '').toLowerCase();
+      const jid = (item.job_id || item.id || '').toLowerCase();
+      return fn.includes(searchTerm) || jid.includes(searchTerm);
+    });
+  }
+
+  // 3. Sorting
+  list.sort((a, b) => {
+    if (sortOption === 'name_asc') return (a.filename || '').localeCompare(b.filename || '');
+    if (sortOption === 'name_desc') return (b.filename || '').localeCompare(a.filename || '');
+    if (sortOption === 'size_asc') return (a.file_size || 0) - (b.file_size || 0);
+    if (sortOption === 'size_desc') return (b.file_size || 0) - (a.file_size || 0);
+    if (sortOption === 'duration') return (b.elapsed || 0) - (a.elapsed || 0);
+    return 0; // default order
+  });
+
+  return list;
+}
+
+/* ═══════════════════════════════════════════════════════════════ */
+/* Batch Selection Handlers                                       */
+/* ═══════════════════════════════════════════════════════════════ */
+function toggleSelectAll(checked) {
+  const visibleJobs = getFilteredAndSortedJobs();
+  visibleJobs.forEach(job => {
+    const id = job.job_id || job.id;
+    if (checked) selectedJobIds.add(id);
+    else selectedJobIds.delete(id);
+  });
+  updateSelectionUI();
+}
+
+function toggleJobSelection(id, checked) {
+  if (checked) selectedJobIds.add(id);
+  else selectedJobIds.delete(id);
+  updateSelectionUI();
+}
+
+function updateSelectionUI() {
+  document.getElementById('selectedCount').textContent = selectedJobIds.size;
+  document.querySelectorAll('.card-checkbox').forEach(chk => {
+    chk.checked = selectedJobIds.has(chk.dataset.jobId);
+  });
+  const chkAll = document.getElementById('chkSelectAll');
+  const visible = getFilteredAndSortedJobs();
+  if (chkAll && visible.length > 0) {
+    chkAll.checked = visible.every(j => selectedJobIds.has(j.job_id || j.id));
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════════ */
+/* File List Rendering (Supports Grid & List Modes)               */
+/* ═══════════════════════════════════════════════════════════════ */
+function renderFileList() {
+  const listEl = document.getElementById('fileList');
+  const filteredJobs = getFilteredAndSortedJobs();
+
+  if (fileQueue.size === 0) {
+    listEl.innerHTML = `
+      <div class="file-list-empty">
+        <div class="empty-icon">📁</div>
+        <p>${t('empty_queue_text')}</p>
+      </div>`;
+    document.getElementById('btnStart').disabled = true;
+    return;
+  }
+
+  if (filteredJobs.length === 0) {
+    listEl.innerHTML = `
+      <div class="file-list-empty">
+        <div class="empty-icon">🔍</div>
+        <p>Không tìm thấy ảnh phù hợp với bộ lọc hiện tại.</p>
+      </div>`;
+    return;
+  }
+
+  listEl.innerHTML = '';
+  filteredJobs.forEach(f => {
+    const id = f.job_id || f.id;
+    const isSelected = selectedJobIds.has(id);
+    const item = document.createElement('div');
+    item.className = 'file-item';
+
+    const statusClass = 'status-' + f.status;
+    const statusLabels = {
+      pending: t('status_pending'),
+      queued: t('status_pending'),
+      validating: t('status_validating'),
+      processing: t('status_processing'),
+      retry: `${t('status_retry')} (${f.retry_count || 1}/${f.max_retries || 3})`,
+      retry_wait: `${t('status_retry')} (${f.retry_count || 1}/${f.max_retries || 3})`,
+      completed: t('status_completed'),
+      error: t('status_error'),
+      failed: t('status_error'),
+      cancelled: t('status_cancelled'),
+      cancel_requested: t('status_cancel_requested')
+    };
+    const statusLabel = statusLabels[f.status] || f.status;
+
+    let actionsHtml = `<button title="Log" onclick="openLogModal('${id}')">📋 Log</button>`;
+    if (f.status !== 'processing') {
+      actionsHtml += `<button title="Quick Preview" onclick="openQuickPreview('${id}')">⚡ Preview</button>`;
+    }
+    if (f.status === 'error' || f.status === 'failed') {
+      actionsHtml += `<button title="Retry" onclick="retryJob('${id}')">🔄 Retry</button>`;
+    }
+    if (f.status === 'completed') {
+      actionsHtml += `<button title="${t('btn_reprocess') || 'Reprocess'}" onclick="reprocessSingleJob('${id}')">🔁</button>`;
+    }
+    if (f.status !== 'processing') {
+      actionsHtml += `<button title="Remove" onclick="removeJob('${id}')">✕</button>`;
+    }
+
+    let dimensionHtml = f.dimensions ? `<span>📐 ${f.dimensions}</span>` : '';
+    if (f.output_dimensions) {
+      dimensionHtml += `<span> ➜ <strong>${f.output_dimensions} (4×)</strong></span>`;
+    }
+    let elapsedHtml = (f.elapsed != null) ? `<span>⏱ ${f.elapsed}s</span>` : '';
+    let retryBadgeHtml = (f.retry_count && f.retry_count > 0) ? `<span class="badge-retry">Thử lại ${f.retry_count}/${f.max_retries || 3}</span>` : '';
+
+    if (currentViewMode === 'grid') {
+      item.innerHTML = `
+        <div class="card-top">
+          <input type="checkbox" class="card-checkbox" data-job-id="${id}" ${isSelected ? 'checked' : ''} onchange="toggleJobSelection('${id}', this.checked)">
+          <span class="status-badge ${statusClass} card-badge-status">${statusLabel}</span>
+          <img class="file-thumb" src="${f.thumbnail_url}" alt="" loading="lazy">
+        </div>
+        <div class="card-body">
+          <div class="file-name" title="${escHtml(f.filename)}">${escHtml(f.filename)}</div>
+          <div class="file-meta">
+            ${dimensionHtml}
+            <span>💾 ${f.file_size_human || formatSize(f.file_size)}</span>
+            ${elapsedHtml}
+            ${retryBadgeHtml}
+          </div>
+          ${f.status === 'processing' ? '<div class="file-progress"><div class="file-progress-bar" id="prog-' + id + '" style="width:50%"></div></div>' : ''}
+          ${f.error ? '<div style="font-size:0.75rem;color:var(--error);margin-top:2px;word-break:break-word;">' + escHtml(f.error) + '</div>' : ''}
+        </div>
+        <div class="card-footer">
+          <span style="font-size:0.72rem;color:var(--text-muted);">${(id).substring(0,8)}...</span>
+          <div class="file-actions">${actionsHtml}</div>
+        </div>`;
+    } else {
+      item.innerHTML = `
+        <input type="checkbox" class="card-checkbox" data-job-id="${id}" ${isSelected ? 'checked' : ''} onchange="toggleJobSelection('${id}', this.checked)">
+        <img class="file-thumb" src="${f.thumbnail_url}" alt="" loading="lazy">
+        <div class="file-info">
+          <div class="file-name" title="${escHtml(f.filename)}">${escHtml(f.filename)}</div>
+          <div class="file-meta">
+            ${dimensionHtml}
+            <span>💾 ${f.file_size_human || formatSize(f.file_size)}</span>
+            ${elapsedHtml}
+            ${retryBadgeHtml}
+          </div>
+          ${f.status === 'processing' ? '<div class="file-progress"><div class="file-progress-bar" id="prog-' + id + '" style="width:50%"></div></div>' : ''}
+          ${f.error ? '<div style="font-size:0.75rem;color:var(--error);margin-top:2px;word-break:break-word;">' + escHtml(f.error) + '</div>' : ''}
+        </div>
+        <div class="file-status">
+          <span class="status-badge ${statusClass}">${statusLabel}</span>
+          <div class="file-actions">${actionsHtml}</div>
+        </div>`;
+    }
+
+    listEl.appendChild(item);
+  });
+
+  document.getElementById('btnStart').disabled = fileQueue.size === 0 || isProcessing;
+}
+
+function updateQueueInfo() {
+  let total = fileQueue.size, pending = 0, done = 0, errors = 0, processing = 0;
+  fileQueue.forEach(f => {
+    if (f.status === 'pending' || f.status === 'queued') pending++;
+    else if (f.status === 'completed') done++;
+    else if (f.status === 'error' || f.status === 'failed') errors++;
+    else if (f.status === 'processing' || f.status === 'validating') processing++;
+  });
+
+  document.getElementById('sumTotal').textContent = total;
+  document.getElementById('sumPending').textContent = pending;
+  document.getElementById('sumDone').textContent = done;
+  document.getElementById('sumError').textContent = errors;
+  document.getElementById('queueBadge').textContent = `${total} items`;
+
+  document.getElementById('btnRetryAll').style.display = errors > 0 ? '' : 'none';
+
+  const completed = done + errors;
+  const pct = total > 0 ? Math.round((completed / total) * 100) : 0;
+  document.getElementById('overallProgress').style.width = pct + '%';
+  document.getElementById('progressText').textContent = total > 0 ? `${completed}/${total}` : '';
+}
+
+function escHtml(s) {
+  if (!s) return '';
+  const d = document.createElement('div');
+  d.textContent = s;
+  return d.innerHTML;
+}
+
+/* ═══════════════════════════════════════════════════════════════ */
+/* ZIP & Report Exports                                           */
+/* ═══════════════════════════════════════════════════════════════ */
+function exportZip(mode) {
+  document.querySelectorAll('.batch-dropdown-menu').forEach(m => m.classList.remove('show'));
+  if (mode === 'selected') {
+    if (selectedJobIds.size === 0) {
+      toast('Vui lòng chọn ít nhất một ảnh để xuất ZIP!', 'warning');
+      return;
+    }
+    const ids = Array.from(selectedJobIds).join(',');
+    window.location.href = `/api/export/zip?mode=selected&job_ids=${encodeURIComponent(ids)}`;
+  } else {
+    window.location.href = '/api/export/zip?mode=all';
+  }
+}
+
+function exportReport(format, mode) {
+  document.querySelectorAll('.batch-dropdown-menu').forEach(m => m.classList.remove('show'));
+  if (mode === 'selected') {
+    if (selectedJobIds.size === 0) {
+      toast('Vui lòng chọn ít nhất một ảnh để xuất báo cáo!', 'warning');
+      return;
+    }
+    const ids = Array.from(selectedJobIds).join(',');
+    window.location.href = `/api/export/report?format=${format}&mode=selected&job_ids=${encodeURIComponent(ids)}`;
+  } else {
+    window.location.href = `/api/export/report?format=${format}&mode=all`;
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════════ */
+/* Job Actions & Processing                                       */
+/* ═══════════════════════════════════════════════════════════════ */
+async function removeJob(id) {
+  try {
+    await fetch('/api/remove-job', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ job_id: id })
+    });
+    fileQueue.delete(id);
+    selectedJobIds.delete(id);
+    renderFileList();
+    updateQueueInfo();
+    updateSelectionUI();
+  } catch(e) {
+    toast('Remove failed', 'error');
+  }
+}
+
+async function retryJob(id) {
+  const tile = parseInt(document.getElementById('tileSize').value) || 64;
+  const f = fileQueue.get(id);
+  let retryTile = tile;
+  if (f && f.is_oom && tile > 64) retryTile = (tile === 128) ? 96 : 64;
+
+  try {
+    const r = await fetch('/api/retry', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        job_ids: [id],
+        tile_size: retryTile,
+        output_dir: currentOutputFolder
+      })
+    });
+    const d = await r.json();
+    if (d.requeued > 0) {
+      if (f) { f.status = 'pending'; f.error = null; }
+      renderFileList();
+      updateQueueInfo();
+      toast(`Retrying with tile ${retryTile}`, 'info');
+    }
+  } catch(e) {
+    toast('Retry failed', 'error');
+  }
+}
+
+async function retryAllFailed() {
+  const failed = [];
+  fileQueue.forEach((f, id) => { if (f.status === 'error' || f.status === 'failed') failed.push(id); });
+  if (failed.length === 0) return;
+
+  const tile = parseInt(document.getElementById('tileSize').value) || 64;
+  try {
+    const r = await fetch('/api/retry', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        job_ids: failed,
+        tile_size: Math.min(tile, 96),
+        output_dir: currentOutputFolder
+      })
+    });
+    const d = await r.json();
+    if (d.requeued > 0) {
+      failed.forEach(id => {
+        const f = fileQueue.get(id);
+        if (f) { f.status = 'pending'; f.error = null; }
+      });
+      renderFileList();
+      updateQueueInfo();
+      toast(`Retrying ${d.requeued} file(s)`, 'info');
+    }
+  } catch(e) {
+    toast('Retry failed', 'error');
+  }
+}
+
+async function clearAll() {
+  try {
+    await fetch('/api/clear-jobs', { method: 'POST' });
+    fileQueue.clear();
+    selectedJobIds.clear();
+    renderFileList();
+    updateQueueInfo();
+    updateSelectionUI();
+    toast('List cleared', 'info');
+  } catch(e) {
+    toast('Clear failed', 'error');
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════════ */
+/* Quick Preview                                                  */
+/* ═══════════════════════════════════════════════════════════════ */
+let currentPreviewJobId = null;
+
+async function openQuickPreview(jobId) {
+  const f = fileQueue.get(jobId);
+  if (!f) return;
+  currentPreviewJobId = jobId;
+
+  const modal = document.getElementById('previewModal');
+  const loading = document.getElementById('previewLoading');
+  const content = document.getElementById('previewContent');
+
+  modal.classList.add('show');
+  loading.style.display = 'block';
+  content.style.display = 'none';
+
+  try {
+    const fmt = document.getElementById('exportFormat').value;
+    const qual = document.getElementById('exportQuality').value;
+    const r = await fetch(`/api/preview/${jobId}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        patch_size: 256,
+        format: fmt === 'auto' ? 'webp' : fmt,
+        quality: parseInt(qual) || 90
+      })
+    });
+    const d = await r.json();
+    loading.style.display = 'none';
+    if (!r.ok || d.error) {
+      toast(d.error || 'Lỗi khi tạo Quick Preview', 'error');
+      closePreviewModal();
+      return;
+    }
+
+    document.getElementById('prevImgOrig').src = d.orig_url + '?t=' + Date.now();
+    document.getElementById('prevImgEnh').src = d.enhanced_url + '?t=' + Date.now();
+    document.getElementById('prevMetaTime').textContent = `Thời gian AI: ${d.elapsed_seconds}s`;
+    document.getElementById('prevMetaRes').textContent = `Kích thước: 256x256 ➜ ${d.enhanced_dimensions}`;
+    document.getElementById('prevMetaCoord').textContent = `Crop: x=${d.crop_box.x}, y=${d.crop_box.y}`;
+    content.style.display = 'block';
+  } catch(e) {
+    loading.style.display = 'none';
+    toast('Lỗi kết nối xem trước: ' + e.message, 'error');
+    closePreviewModal();
+  }
+}
+
+function closePreviewModal() {
+  document.getElementById('previewModal').classList.remove('show');
+  currentPreviewJobId = null;
+}
+
+function processFromPreview() {
+  if (!currentPreviewJobId) return;
+  const jid = currentPreviewJobId;
+  closePreviewModal();
+  processSpecificJobs([jid]);
+}
+
+/* ═══════════════════════════════════════════════════════════════ */
+/* Per-Job Log Modal Handlers                                      */
+/* ═══════════════════════════════════════════════════════════════ */
+let currentLogJobId = null;
+
+function openLogModal(jobId) {
+  currentLogJobId = jobId;
+  document.getElementById('logModalTitle').textContent = `📋 Nhật ký xử lý Job: ${jobId}`;
+  document.getElementById('logModalContent').textContent = 'Đang tải log...';
+  document.getElementById('modalLog').classList.add('show');
+  refreshCurrentLog();
+}
+
+function closeLogModal() {
+  document.getElementById('modalLog').classList.remove('show');
+  currentLogJobId = null;
+}
+
+async function refreshCurrentLog() {
+  if (!currentLogJobId) return;
+  try {
+    const r = await fetch(`/api/jobs/${currentLogJobId}/log`);
+    const d = await r.json();
+    document.getElementById('logModalContent').textContent = d.log || '[Không có nội dung log]';
+  } catch(e) {
+    document.getElementById('logModalContent').textContent = 'Lỗi tải log: ' + e.message;
+  }
+}
+
+async function processSpecificJobs(ids) {
+  const tileSelect = document.getElementById('tileSize').value;
+  const fmt = document.getElementById('exportFormat').value;
+  const qual = parseInt(document.getElementById('exportQuality').value) || 95;
+
+  try {
+    const r = await fetch('/api/process', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        job_ids: ids,
+        tile_size: tileSelect === 'auto' ? 128 : parseInt(tileSelect),
+        tile_mode: tileSelect === 'auto' ? 'auto' : 'manual',
+        export_format: fmt,
+        quality: qual,
+        output_dir: currentOutputFolder
+      })
+    });
+    const d = await r.json();
+    if (d.error) {
+      toast(d.error, 'error');
+      return;
+    }
+    isProcessing = true;
+    document.getElementById('btnStart').disabled = true;
+    document.getElementById('btnCancel').style.display = '';
+    document.getElementById('statusMessage').textContent = 'Processing queue...';
+    toast(`Processing ${d.total_jobs} image(s)...`, 'info');
+  } catch(e) {
+    toast('Start failed: ' + e.message, 'error');
+  }
+}
+
+async function reprocessSingleJob(id) {
+  try {
+    const r = await fetch('/api/reprocess', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ job_id: id })
+    });
+    const d = await r.json();
+    if (d.jobs && d.jobs.length > 0) {
+      d.jobs.forEach(nj => {
+        fileQueue.set(nj.id, {
+          ...nj,
+          job_id: nj.id,
+          status: 'pending'
+        });
+      });
+      renderFileList();
+      updateQueueInfo();
+      toast(currentLang === 'vi' ? 'Đã tạo tác vụ xử lý lại' : 'Reprocess job created', 'success');
+    } else {
+      toast(d.error || 'Reprocess failed', 'error');
+    }
+  } catch(e) {
+    toast('Reprocess error: ' + e.message, 'error');
+  }
+}
+
+async function startProcessing() {
+  const ids = [];
+  const completedSelected = [];
+
+  if (selectedJobIds.size > 0) {
+    selectedJobIds.forEach(id => {
+      const f = fileQueue.get(id);
+      if (f) {
+        if (f.status === 'completed') {
+          completedSelected.push(id);
+        } else if (f.status === 'pending' || f.status === 'queued' || f.status === 'error' || f.status === 'failed' || f.status === 'cancelled') {
+          ids.push(id);
+        }
+      }
+    });
+  } else {
+    fileQueue.forEach((f, id) => {
+      if (f.status === 'pending' || f.status === 'queued' || f.status === 'error' || f.status === 'failed' || f.status === 'cancelled') {
+        ids.push(id);
+      }
+    });
+  }
+
+  if (completedSelected.length > 0) {
+    try {
+      const r = await fetch('/api/reprocess', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ job_ids: completedSelected })
+      });
+      const d = await r.json();
+      if (d.jobs && d.jobs.length > 0) {
+        d.jobs.forEach(nj => {
+          fileQueue.set(nj.id, { ...nj, job_id: nj.id, status: 'pending' });
+          ids.push(nj.id);
+        });
+      }
+    } catch(e) {
+      console.error('Reprocess batch error:', e);
+    }
+  }
+
+  if (ids.length === 0) {
+    toast(currentLang === 'vi' ? 'Không có ảnh nào cần xử lý' : 'No images to process', 'warning');
+    return;
+  }
+  await processSpecificJobs(ids);
+}
+
+async function cancelProcessing() {
+  try {
+    await fetch('/api/cancel', { method: 'POST' });
+    toast('Cancelling... current image will finish safely', 'warning');
+  } catch(e) {
+    toast('Cancel failed', 'error');
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════════ */
+/* SSE Events                                                     */
+/* ═══════════════════════════════════════════════════════════════ */
+function connectSSE() {
+  if (evtSource) evtSource.close();
+  evtSource = new EventSource('/api/progress');
+
+  evtSource.addEventListener('job_state', (e) => {
+    const d = JSON.parse(e.data);
+    const f = fileQueue.get(d.job_id);
+    if (f) {
+      f.status = d.status;
+      f.error = d.error;
+      f.elapsed = d.elapsed;
+      f.is_oom = d.is_oom || false;
+    }
+  });
+
+  evtSource.addEventListener('job_start', (e) => {
+    const d = JSON.parse(e.data);
+    const f = fileQueue.get(d.job_id);
+    if (f) { f.status = 'processing'; }
+    renderFileList();
+    updateQueueInfo();
+    document.getElementById('statusMessage').textContent = `Processing: ${d.filename}`;
+  });
+
+  evtSource.addEventListener('job_progress', (e) => {
+    const d = JSON.parse(e.data);
+    const bar = document.getElementById('prog-' + d.job_id);
+    if (bar) bar.style.width = d.progress_pct + '%';
+    if (d.detail) {
+      document.getElementById('statusMessage').textContent = `${d.filename}: ${d.detail}`;
+    }
+  });
+
+  evtSource.addEventListener('job_complete', (e) => {
+    const d = JSON.parse(e.data);
+    const f = fileQueue.get(d.job_id);
+    if (f) {
+      f.status = 'completed';
+      f.elapsed = d.elapsed;
+      f.output_dimensions = d.output_dimensions;
+      f.output_size = d.output_size;
+    }
+    renderFileList();
+    updateQueueInfo();
+    toast(`✅ ${d.filename} completed in ${d.elapsed}s`, 'success');
+  });
+
+  evtSource.addEventListener('job_error', (e) => {
+    const d = JSON.parse(e.data);
+    const f = fileQueue.get(d.job_id);
+    if (f) {
+      f.status = d.status || 'error';
+      f.error = d.error;
+      f.is_oom = d.is_oom || false;
+      f.elapsed = d.elapsed;
+      if (d.retry_count != null) f.retry_count = d.retry_count;
+    }
+    renderFileList();
+    updateQueueInfo();
+    toast(`❌ ${d.filename}: ${(d.error || '').substring(0, 80)}`, 'error');
+  });
+
+  evtSource.addEventListener('queue_complete', (e) => {
+    const d = JSON.parse(e.data);
+    isProcessing = false;
+    document.getElementById('btnStart').disabled = false;
+    document.getElementById('btnCancel').style.display = 'none';
+    const msg = d.cancelled
+      ? `Cancelled. ${d.completed} completed, ${d.errors} errors.`
+      : `All done! ${d.completed} completed, ${d.errors} errors.`;
+    document.getElementById('statusMessage').textContent = msg;
+    toast(msg, d.errors > 0 ? 'warning' : 'success');
+  });
+
+  /* Phase 5 Video SSE Listeners */
+  evtSource.addEventListener('video_stage', (e) => {
+    try {
+      const d = JSON.parse(e.data);
+      updateVideoStageUI(d.stage, d.detail);
+    } catch(err) {}
+  });
+
+  evtSource.addEventListener('video_progress', (e) => {
+    try {
+      const d = JSON.parse(e.data);
+      updateVideoProgressUI(d);
+    } catch(err) {}
+  });
+
+  evtSource.addEventListener('video_complete', (e) => {
+    try {
+      const d = JSON.parse(e.data);
+      onVideoCompleted(d);
+    } catch(err) {}
+  });
+
+  evtSource.addEventListener('video_error', (e) => {
+    try {
+      const d = JSON.parse(e.data);
+      onVideoError(d);
+    } catch(err) {}
+  });
+
+  evtSource.onerror = () => {
+    setTimeout(connectSSE, 3000);
+  };
+}
+
+/* ═══════════════════════════════════════════════════════════════ */
+/* Native Windows Folder Browser                                   */
+/* ═══════════════════════════════════════════════════════════════ */
+async function browseFolderNative(mode = 'input') {
+  const btn = mode === 'input' ? document.getElementById('btnBrowseInput') : null;
+  const btnMain = mode === 'input' ? document.getElementById('btnChooseFolderMain') : null;
+  const originalText = btn ? btn.innerHTML : '';
+  const originalMainText = btnMain ? btnMain.innerHTML : '';
+
+  if (btn) {
+    btn.disabled = true;
+    btn.innerHTML = `⏳ ${t('folder_dialog_opening')}`;
+  }
+  if (btnMain) {
+    btnMain.disabled = true;
+    btnMain.innerHTML = `⏳ ${t('folder_dialog_opening')}`;
+  }
+
+  const currentPath = (mode === 'input') ? currentInputFolder : currentOutputFolder;
+  const dialogTitle = (mode === 'input') ? t('btn_choose_input_folder') : t('folder_output');
+
+  try {
+    const res = await fetch('/api/browse-folder', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ initial_dir: currentPath || '', title: dialogTitle })
+    });
+
+    const data = await res.json();
+
+    if (res.status === 403 && data.is_remote) {
+      toast(t('remote_browse_warning'), 'warning');
+      openFolderBrowser(mode);
+      return;
+    }
+
+    if (data.status === 'cancelled') {
+      toast(t('folder_cancelled'), 'info');
+      return;
+    }
+
+    if (data.status === 'error' || !res.ok) {
+      toast(data.error || 'Lỗi khi chọn thư mục', 'error');
+      return;
+    }
+
+    if (data.status === 'success' && data.path) {
+      const selectedPath = data.path;
+      if (mode === 'input') {
+        currentInputFolder = selectedPath;
+        document.getElementById('inputFolder').value = selectedPath;
+        document.getElementById('currentFolderLabel').textContent = `Folder: ${selectedPath}`;
+
+        const box = document.getElementById('folderStatusBox');
+        if (box) {
+          box.style.display = 'block';
+          document.getElementById('folderSelectedPath').textContent = selectedPath;
+          document.getElementById('folderSelectedPath').title = selectedPath;
+        }
+        const resetBtn = document.getElementById('btnResetInputFolder');
+        if (resetBtn) resetBtn.style.display = '';
+
+        await loadImagesFromFolder(selectedPath, true);
+      } else if (mode === 'output') {
+        currentOutputFolder = selectedPath;
+        document.getElementById('outputFolder').value = selectedPath;
+        try {
+          const rSet = await fetch('/api/set-output-dir', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ path: selectedPath })
+          });
+          const dSet = await rSet.json();
+          if (dSet.output_dir) {
+            currentOutputFolder = dSet.output_dir;
+            toast(t('output_folder_updated'), 'success');
+          } else if (dSet.error) {
+            toast(dSet.error, 'error');
+          }
+        } catch(e) {
+          toast('Failed to set output folder', 'error');
+        }
+      }
+    }
+  } catch (err) {
+    toast('Lỗi kết nối khi mở hộp thoại: ' + err.message, 'error');
+  } finally {
+    if (btn) {
+      btn.disabled = false;
+      btn.innerHTML = originalText;
+    }
+    if (btnMain) {
+      btnMain.disabled = false;
+      btnMain.innerHTML = originalMainText;
+    }
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════════ */
+/* Folder Browser Modal                                           */
+/* ═══════════════════════════════════════════════════════════════ */
+function openFolderBrowser(mode) {
+  folderBrowserMode = mode;
+  folderBrowserPath = '';
+  document.getElementById('folderModal').classList.add('show');
+  browseTo('');
+}
+
+function closeFolderBrowser() {
+  document.getElementById('folderModal').classList.remove('show');
+}
+
+async function browseTo(path) {
+  folderBrowserPath = path;
+  const list = document.getElementById('folderList');
+  const pathEl = document.getElementById('folderCurrentPath');
+
+  try {
+    const url = path ? `/api/browse-folder?path=${encodeURIComponent(path)}` : '/api/browse-folder';
+    const r = await fetch(url);
+    const d = await r.json();
+
+    pathEl.textContent = d.current || 'My Computer';
+    document.getElementById('folderUp').style.display = d.is_root ? 'none' : '';
+
+    list.innerHTML = '';
+    d.folders.forEach(f => {
+      const item = document.createElement('div');
+      item.className = 'folder-item';
+      const fullPath = d.is_root ? f : (d.current + '\\' + f);
+      item.innerHTML = `<span class="folder-icon">📁</span><span>${escHtml(d.is_root ? f : f)}</span>`;
+      item.addEventListener('dblclick', () => browseTo(fullPath));
+      item.addEventListener('click', () => {
+        list.querySelectorAll('.folder-item').forEach(i => i.style.background = '');
+        item.style.background = 'var(--accent-dim)';
+        folderBrowserPath = fullPath;
+      });
+      list.appendChild(item);
+    });
+  } catch(e) {
+    list.innerHTML = '<div style="padding:1rem;color:var(--error)">Error loading folders</div>';
+  }
+}
+
+function folderGoUp() {
+  if (!folderBrowserPath) return;
+  const parent = folderBrowserPath.replace(/\\[^\\]*$/, '');
+  if (parent === folderBrowserPath || parent.length < 2) {
+    browseTo('');
+  } else {
+    browseTo(parent);
+  }
+}
+
+async function selectFolder() {
+  if (!folderBrowserPath) return;
+  closeFolderBrowser();
+
+  if (folderBrowserMode === 'input') {
+    currentInputFolder = folderBrowserPath;
+    document.getElementById('inputFolder').value = folderBrowserPath;
+    document.getElementById('currentFolderLabel').textContent = `Folder: ${folderBrowserPath}`;
+    await loadImagesFromFolder(folderBrowserPath);
+  } else if (folderBrowserMode === 'output') {
+    document.getElementById('outputFolder').value = folderBrowserPath;
+    try {
+      const r = await fetch('/api/set-output-dir', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ path: folderBrowserPath })
+      });
+      const d = await r.json();
+      if (d.output_dir) {
+        currentOutputFolder = d.output_dir;
+        toast('Output folder updated', 'success');
+      } else if (d.error) {
+        toast(d.error, 'error');
+      }
+    } catch(e) {
+      toast('Failed to set output folder', 'error');
+    }
+  }
+}
+
+async function openOutputFolder() {
+  const path = currentOutputFolder || document.getElementById('outputFolder').value;
+  if (!path) {
+    toast('No output folder configured', 'warning');
+    return;
+  }
+  try {
+    await fetch('/api/open-folder', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ path })
+    });
+  } catch(e) {
+    toast('Failed to open output folder', 'error');
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════════ */
+/* Helpers                                                        */
+/* ═══════════════════════════════════════════════════════════════ */
+function formatSize(bytes) {
+  if (!bytes) return '-';
+  if (bytes < 1024) return bytes + ' B';
+  if (bytes < 1048576) return (bytes / 1024).toFixed(1) + ' KB';
+  return (bytes / 1048576).toFixed(1) + ' MB';
+}
+
+function toast(message, type = 'info') {
+  const container = document.getElementById('toastContainer');
+  const el = document.createElement('div');
+  el.className = 'toast ' + type;
+  el.textContent = message;
+  container.appendChild(el);
+  setTimeout(() => {
+    el.style.opacity = '0';
+    setTimeout(() => el.remove(), 300);
+  }, 4000);
+}
+/* ═══════════════════════════════════════════════════════════════ */
+/* Phase 5 Video Enhancement Frontend Handlers                    */
+/* ═══════════════════════════════════════════════════════════════ */
+let currentMainTab = 'image';
+let currentVideoFile = null;
+let currentVideoAnalysis = null;
+let currentVideoJobId = null;
+
+function switchMainTab(tab) {
+  currentMainTab = tab;
+  const tabImg = document.getElementById('tabImage');
+  const tabVid = document.getElementById('tabVideo');
+  const secImg = document.getElementById('imageSection');
+  const secVid = document.getElementById('videoSection');
+
+  if (tab === 'video') {
+    tabImg.classList.remove('active');
+    tabVid.classList.add('active');
+    secImg.style.display = 'none';
+    secVid.style.display = 'flex';
+    loadVideoJobs();
+  } else {
+    tabVid.classList.remove('active');
+    tabImg.classList.add('active');
+    secVid.style.display = 'none';
+    secImg.style.display = 'flex';
+  }
+}
+
+function setupVideoDragDrop() {
+  const dz = document.getElementById('videoDropzone');
+  if (!dz) return;
+
+  ['dragenter', 'dragover'].forEach(evt => {
+    dz.addEventListener(evt, e => {
+      e.preventDefault();
+      e.stopPropagation();
+      dz.style.borderColor = 'var(--accent)';
+      dz.style.background = 'var(--accent-dim)';
+    });
+  });
+
+  ['dragleave', 'drop'].forEach(evt => {
+    dz.addEventListener(evt, e => {
+      e.preventDefault();
+      e.stopPropagation();
+      dz.style.borderColor = '';
+      dz.style.background = '';
+    });
+  });
+
+  dz.addEventListener('drop', e => {
+    const files = e.dataTransfer.files;
+    if (files && files.length > 0) {
+      handleVideoFileSelect(files);
+    }
+  });
+}
+
+async function handleVideoFileSelect(files) {
+  if (!files || files.length === 0) return;
+  const file = files[0];
+  currentVideoFile = file;
+  await uploadAndAnalyzeVideo(file);
+}
+
+async function uploadAndAnalyzeVideo(file) {
+  toast(`Đang tải lên và phân tích ${file.name}...`, 'info');
+  const formData = new FormData();
+  formData.append('file', file);
+
+  try {
+    const rUp = await fetch('/api/video/upload', {
+      method: 'POST',
+      body: formData
+    });
+    const dUp = await rUp.json();
+    if (!rUp.ok || !dUp.success || dUp.accepted.length === 0) {
+      const err = (dUp.rejected && dUp.rejected[0] && dUp.rejected[0].reason) || 'Upload failed';
+      toast(err, 'error');
+      return;
+    }
+
+    const savedPath = dUp.accepted[0].path;
+
+    // Analyze video
+    const rAn = await fetch('/api/video/analyze', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ source_path: savedPath })
+    });
+    const analysis = await rAn.json();
+    if (!rAn.ok || !analysis.valid) {
+      toast(analysis.error || 'Video analysis failed', 'error');
+      return;
+    }
+
+    currentVideoAnalysis = analysis;
+    populateVideoAnalysis(analysis);
+    document.getElementById('videoAnalysisCard').style.display = 'flex';
+    toast(`Phân tích video thành công: ${analysis.video.width}x${analysis.video.height} (${analysis.video.total_frames} frames)`, 'success');
+  } catch (e) {
+    toast('Lỗi phân tích video: ' + e.message, 'error');
+  }
+}
+
+function populateVideoAnalysis(a) {
+  document.getElementById('vMetaFilename').textContent = a.filename;
+  document.getElementById('vMetaRes').textContent = `${a.video.width}x${a.video.height}`;
+  document.getElementById('vMetaTargetRes').textContent = `${a.video.target_width}x${a.video.target_height} (4X)`;
+  document.getElementById('vMetaFps').textContent = `${a.video.fps} fps ${a.video.is_vfr ? '(VFR)' : '(CFR)'}`;
+  document.getElementById('vMetaDuration').textContent = `${a.duration}s`;
+  document.getElementById('vMetaFrames').textContent = a.video.total_frames;
+  document.getElementById('vMetaAudio').textContent = a.audio.has_audio ? `${a.audio.primary_codec} (${a.audio.stream_count} stream)` : 'Không có âm thanh';
+  document.getElementById('vMetaStorage').textContent = a.storage.estimated_temp_human;
+  document.getElementById('vMetaFreeDisk').textContent = a.storage.free_disk_human;
+
+  if (!a.storage.is_space_sufficient) {
+    document.getElementById('vMetaStorage').style.color = 'var(--error)';
+    toast('Cảnh báo: Ổ đĩa có thể không đủ dung lượng tạm cho toàn bộ video!', 'warning');
+  } else {
+    document.getElementById('vMetaStorage').style.color = '';
+  }
+}
+
+async function startVideoUpscaling() {
+  if (!currentVideoAnalysis) {
+    toast('Vui lòng chọn video trước khi bắt đầu', 'warning');
+    return;
+  }
+
+  const quality = document.getElementById('videoQualityPreset').value;
+  const tileSelect = document.getElementById('videoTileSize').value;
+  const tileMode = tileSelect === 'auto' ? 'auto' : 'manual';
+  const tileSize = tileSelect === 'auto' ? 128 : parseInt(tileSelect);
+
+  try {
+    const r = await fetch('/api/video/jobs', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        source_path: currentVideoAnalysis.filename,
+        quality_preset: quality,
+        tile_mode: tileMode,
+        tile_size: tileSize,
+        auto_start: true
+      })
+    });
+    const d = await r.json();
+    if (!r.ok || !d.success) {
+      toast(d.error || 'Khởi tạo tác vụ video thất bại', 'error');
+      return;
+    }
+
+    currentVideoJobId = d.job.id;
+    document.getElementById('videoProgressCard').style.display = 'flex';
+    document.getElementById('videoPlayerCard').style.display = 'none';
+
+    document.getElementById('btnStartVideo').style.display = 'none';
+    document.getElementById('btnPauseVideo').style.display = '';
+    document.getElementById('btnCancelVideo').style.display = '';
+    document.getElementById('btnResumeVideo').style.display = 'none';
+
+    resetVideoStageStepper();
+    toast('Đã bắt đầu nâng cấp video trên GPU...', 'info');
+    loadVideoJobs();
+  } catch (e) {
+    toast('Lỗi khởi tạo video: ' + e.message, 'error');
+  }
+}
+
+async function pauseActiveVideo() {
+  if (!currentVideoJobId) return;
+  try {
+    await fetch(`/api/video/jobs/${currentVideoJobId}/pause`, { method: 'POST' });
+    document.getElementById('btnPauseVideo').style.display = 'none';
+    document.getElementById('btnResumeVideo').style.display = '';
+    toast('Đang tạm dừng video ở ranh giới khung hình an toàn...', 'warning');
+  } catch (e) {
+    toast('Lỗi tạm dừng: ' + e.message, 'error');
+  }
+}
+
+async function resumeActiveVideo() {
+  if (!currentVideoJobId) return;
+  try {
+    await fetch(`/api/video/jobs/${currentVideoJobId}/resume`, { method: 'POST' });
+    document.getElementById('btnResumeVideo').style.display = 'none';
+    document.getElementById('btnPauseVideo').style.display = '';
+    toast('Tiếp tục nâng cấp video...', 'info');
+  } catch (e) {
+    toast('Lỗi tiếp tục: ' + e.message, 'error');
+  }
+}
+
+async function cancelActiveVideo() {
+  if (!currentVideoJobId) return;
+  try {
+    await fetch(`/api/video/jobs/${currentVideoJobId}/cancel`, { method: 'POST' });
+    document.getElementById('btnStartVideo').style.display = '';
+    document.getElementById('btnPauseVideo').style.display = 'none';
+    document.getElementById('btnResumeVideo').style.display = 'none';
+    document.getElementById('btnCancelVideo').style.display = 'none';
+    toast('Đã gửi yêu cầu hủy tác vụ video', 'warning');
+    loadVideoJobs();
+  } catch (e) {
+    toast('Lỗi hủy video: ' + e.message, 'error');
+  }
+}
+
+function resetVideoStageStepper() {
+  ['stageAnalyzing', 'stageExtracting', 'stageProcessing', 'stageReconstructing', 'stageRestoringAudio', 'stageVerifying'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.className = 'stage-pill';
+  });
+}
+
+function updateVideoStageUI(stage, detail) {
+  const stageMap = {
+    'ANALYZING': 'stageAnalyzing',
+    'EXTRACTING': 'stageExtracting',
+    'EXTRACTING_AUDIO': 'stageExtracting',
+    'PROCESSING': 'stageProcessing',
+    'RECONSTRUCTING': 'stageReconstructing',
+    'RESTORING_AUDIO': 'stageRestoringAudio',
+    'VERIFYING': 'stageVerifying'
+  };
+
+  const currentId = stageMap[stage];
+  if (currentId) {
+    const el = document.getElementById(currentId);
+    if (el) el.className = 'stage-pill active';
+  }
+
+  const badge = document.getElementById('videoProgressBadge');
+  if (badge) badge.textContent = stage;
+  if (detail) {
+    document.getElementById('videoProgressTitle').textContent = detail;
+  }
+}
+
+function updateVideoProgressUI(d) {
+  const bar = document.getElementById('videoProgressBar');
+  if (bar) bar.style.width = (d.progress_pct || 0) + '%';
+
+  const pctEl = document.getElementById('videoProgressPct');
+  if (pctEl) pctEl.textContent = (d.progress_pct || 0) + '%';
+
+  const frEl = document.getElementById('videoProgressFrames');
+  if (frEl && d.current_frame != null) {
+    frEl.textContent = `Khung hình: ${d.current_frame} / ${d.total_frames}`;
+  }
+
+  const spEl = document.getElementById('videoProgressSpeed');
+  if (spEl && d.fps_rate != null) {
+    spEl.textContent = `Tốc độ: ${d.fps_rate} fps`;
+  }
+
+  const etaEl = document.getElementById('videoProgressEta');
+  if (etaEl && d.eta_seconds != null) {
+    etaEl.textContent = `Ước tính còn: ${d.eta_seconds}s`;
+  }
+
+  const tileEl = document.getElementById('videoProgressTile');
+  if (tileEl && d.tile_used != null) {
+    tileEl.textContent = `Tile: ${d.tile_used}`;
+  }
+}
+
+function onVideoCompleted(d) {
+  toast(`🎉 Video ${d.output_filename} nâng cấp thành công trong ${d.elapsed_seconds}s!`, 'success');
+  document.getElementById('videoProgressCard').style.display = 'none';
+  document.getElementById('btnStartVideo').style.display = '';
+  document.getElementById('btnPauseVideo').style.display = 'none';
+  document.getElementById('btnResumeVideo').style.display = 'none';
+  document.getElementById('btnCancelVideo').style.display = 'none';
+
+  // Show player
+  const playerCard = document.getElementById('videoPlayerCard');
+  playerCard.style.display = 'flex';
+  const player = document.getElementById('videoPlayer');
+  if (player && currentVideoJobId) {
+    player.src = `/api/video/jobs/${currentVideoJobId}/download?t=${Date.now()}`;
+  }
+  const dlBtn = document.getElementById('btnDownloadVideo');
+  if (dlBtn && currentVideoJobId) {
+    dlBtn.href = `/api/video/jobs/${currentVideoJobId}/download`;
+    dlBtn.download = d.output_filename || 'video_4x.mp4';
+  }
+  loadVideoJobs();
+}
+
+function onVideoError(d) {
+  toast(`❌ Lỗi nâng cấp video: ${d.error}`, 'error');
+  document.getElementById('btnStartVideo').style.display = '';
+  document.getElementById('btnPauseVideo').style.display = 'none';
+  document.getElementById('btnResumeVideo').style.display = 'none';
+  document.getElementById('btnCancelVideo').style.display = 'none';
+  loadVideoJobs();
+}
+
+function exportVideoReport(fmt) {
+  if (!currentVideoJobId) {
+    toast('Chưa có video nào để xuất báo cáo', 'warning');
+    return;
+  }
+  window.open(`/api/video/jobs/${currentVideoJobId}/report?format=${fmt}`, '_blank');
+}
+
+async function loadVideoJobs() {
+  try {
+    const r = await fetch('/api/video/jobs?limit=20');
+    const d = await r.json();
+    renderVideoJobs(d.jobs || []);
+  } catch (e) {
+    console.error('Failed to load video jobs', e);
+  }
+}
+
+function renderVideoJobs(jobs) {
+  const tbody = document.getElementById('videoJobsBody');
+  if (!tbody) return;
+
+  if (!jobs || jobs.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="6" style="text-align:center; color:var(--text-muted); padding:1rem;">Chưa có video nào. Kéo thả video để nâng cấp.</td></tr>';
+    return;
+  }
+
+  tbody.innerHTML = jobs.map(j => {
+    const isCompleted = j.status === 'COMPLETED';
+    const isPaused = j.status === 'PAUSED';
+    const isProcessing = j.status === 'PROCESSING';
+
+    let actions = '';
+    if (isCompleted) {
+      actions += `<a class="btn btn-sm btn-secondary" href="/api/video/jobs/${j.id}/download" download title="Tải video">📥 Tải</a> `;
+      actions += `<button class="btn btn-sm btn-secondary" onclick="previewSavedVideo('${j.id}')" title="Xem trước">▶ Xem</button> `;
+      actions += `<button class="btn btn-sm btn-secondary" onclick="window.open('/api/video/jobs/${j.id}/report?format=html', '_blank')" title="Báo cáo">📊</button> `;
+    } else if (isPaused) {
+      actions += `<button class="btn btn-sm btn-primary" onclick="resumeVideoById('${j.id}')">▶ Tiếp tục</button> `;
+    }
+    actions += `<button class="btn btn-sm btn-danger" onclick="deleteVideoJob('${j.id}')" title="Xóa">✕</button>`;
+
+    const statusBadge = `<span class="badge ${isCompleted ? 'badge-success' : (j.status === 'FAILED' ? 'badge-danger' : 'badge-info')}">${j.status}</span>`;
+
+    return `
+      <tr>
+        <td style="font-weight:600; max-width:200px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" title="${escHtml(j.filename)}">${escHtml(j.filename)}</td>
+        <td>${j.source_width}x${j.source_height} ➜ <strong>${j.target_width}x${j.target_height}</strong></td>
+        <td>${j.processed_frames} / ${j.total_frames}</td>
+        <td>${j.elapsed_seconds ? j.elapsed_seconds.toFixed(1) + 's' : '-'}</td>
+        <td>${statusBadge}</td>
+        <td>${actions}</td>
+      </tr>
+    `;
+  }).join('');
+}
+
+function previewSavedVideo(jobId) {
+  currentVideoJobId = jobId;
+  const playerCard = document.getElementById('videoPlayerCard');
+  playerCard.style.display = 'flex';
+  const player = document.getElementById('videoPlayer');
+  if (player) {
+    player.src = `/api/video/jobs/${jobId}/download?t=${Date.now()}`;
+    player.play();
+  }
+  const dlBtn = document.getElementById('btnDownloadVideo');
+  if (dlBtn) {
+    dlBtn.href = `/api/video/jobs/${jobId}/download`;
+  }
+}
+
+async function resumeVideoById(jobId) {
+  currentVideoJobId = jobId;
+  await resumeActiveVideo();
+}
+
+async function deleteVideoJob(jobId) {
+  if (!confirm('Bạn có chắc chắn muốn xóa video này và dọn dẹp không gian làm việc?')) return;
+  try {
+    await fetch(`/api/video/jobs/${jobId}`, { method: 'DELETE' });
+    toast('Đã xóa tác vụ video thành công', 'success');
+    loadVideoJobs();
+  } catch (e) {
+    toast('Lỗi xóa video: ' + e.message, 'error');
+  }
+}
+
+// Initialize video drag and drop on load
+window.addEventListener('DOMContentLoaded', () => {
+  setupVideoDragDrop();
+});
+</script>
+</body>
+</html>
