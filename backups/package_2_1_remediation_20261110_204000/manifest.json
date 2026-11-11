@@ -1,0 +1,30 @@
+{
+  "created_at": "2026-11-10T20:40:00.685774",
+  "backup_dir": "E:\\AI Image Studio\\RealESRGAN-v030\\backups\\package_2_1_remediation_20261110_204000",
+  "files": {
+    "app.py": {
+      "source": "E:\\AI Image Studio\\RealESRGAN-v030\\app.py",
+      "backup": "E:\\AI Image Studio\\RealESRGAN-v030\\backups\\package_2_1_remediation_20261110_204000\\app.py",
+      "size": 126666,
+      "sha256": "0fd2fea0a041aa0e8098274e030618c6ae31f4e059c5f75fd3269c3e27971d60"
+    },
+    "job_manager.py": {
+      "source": "E:\\AI Image Studio\\RealESRGAN-v030\\job_manager.py",
+      "backup": "E:\\AI Image Studio\\RealESRGAN-v030\\backups\\package_2_1_remediation_20261110_204000\\job_manager.py",
+      "size": 41019,
+      "sha256": "2a87ac8d9b02d303c36964bd1abf9d820b7fcfcbdc37cdfa43457d4ae835e92f"
+    },
+    "ai_worker.py": {
+      "source": "E:\\AI Image Studio\\RealESRGAN-v030\\ai_worker.py",
+      "backup": "E:\\AI Image Studio\\RealESRGAN-v030\\backups\\package_2_1_remediation_20261110_204000\\ai_worker.py",
+      "size": 25981,
+      "sha256": "8d05ea2db2673fd32423c3092bf121d5308d3533f8fe1763490d6131bbaa7206"
+    },
+    "config.json": {
+      "source": "E:\\AI Image Studio\\RealESRGAN-v030\\config.json",
+      "backup": "E:\\AI Image Studio\\RealESRGAN-v030\\backups\\package_2_1_remediation_20261110_204000\\config.json",
+      "size": 2170,
+      "sha256": "2ca80672e08077ef27e9ef5e9a6081b3259f518304608fd002ebca32c8241773"
+    }
+  }
+}

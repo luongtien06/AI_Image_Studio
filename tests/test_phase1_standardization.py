@@ -234,6 +234,8 @@ class TestPhase1Standardization(unittest.TestCase):
         """Test real Real-ESRGAN inference on GPU 0 with RealESRGAN_x4plus."""
         test_in = self.test_dir / "logo_test_in.png"
         sample_src = PROJECT_ROOT / "assets" / "realesrgan_logo.png"
+        if not sample_src.exists():
+            self.skipTest("Sample source asset realesrgan_logo.png not present")
         
         # Read and create a 64x64 sub-crop
         with Image.open(sample_src) as src_img:

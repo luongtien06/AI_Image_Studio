@@ -352,7 +352,7 @@ class TestGroupF_RegressionAndIntegrity(unittest.TestCase):
             img = Image.new("RGB", (6000, 5000), (255, 255, 255))
             img.save(huge_img)
 
-            valid, reason, _, _ = validate_image_file(huge_img)
+            valid, reason, _, _ = validate_image_file(huge_img, max_pixels=25000000)
             self.assertFalse(valid)
             self.assertIn("maximum pixel limit", reason)
 

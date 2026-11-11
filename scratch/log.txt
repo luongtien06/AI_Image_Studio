@@ -1,0 +1,2 @@
+argv: ['E:\\AI Image Studio\\RealESRGAN-v030\\scratch\\test_args.py', 'E:\\AI Image Studio\\RealESRGAN-v030\\scratch\\out.txt', '', 'Select Image Folder - AI Image Studio']
+desktop: 420

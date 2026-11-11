@@ -112,7 +112,8 @@ class RealESRGANer():
 
     def process(self):
         # model inference
-        self.output = self.model(self.img)
+        output = self.model(self.img)
+        self.output = output.to('cpu')
 
     def tile_process(self):
         """It will first crop input images to tiles, and then process each tile.
@@ -125,8 +126,8 @@ class RealESRGANer():
         output_width = width * self.scale
         output_shape = (batch, channel, output_height, output_width)
 
-        # start with black image
-        self.output = self.img.new_zeros(output_shape)
+        # start with black image on CPU to prevent full output canvas allocation in VRAM
+        self.output = torch.zeros(output_shape, dtype=self.img.dtype, device='cpu')
         tiles_x = math.ceil(width / self.tile_size)
         tiles_y = math.ceil(height / self.tile_size)
 
@@ -159,7 +160,8 @@ class RealESRGANer():
                     with torch.no_grad():
                         output_tile = self.model(input_tile)
                 except RuntimeError as error:
-                    print('Error', error)
+                    print('Error in tile inference:', error)
+                    raise error
                 print(f'\tTile {tile_idx}/{tiles_x * tiles_y}')
 
                 # output tile area on total image
@@ -174,10 +176,11 @@ class RealESRGANer():
                 output_start_y_tile = (input_start_y - input_start_y_pad) * self.scale
                 output_end_y_tile = output_start_y_tile + input_tile_height * self.scale
 
-                # put tile into output image
+                # put tile into output image on CPU (transfer only unpadded tile to CPU)
+                tile_core = output_tile[:, :, output_start_y_tile:output_end_y_tile,
+                                        output_start_x_tile:output_end_x_tile].to('cpu')
                 self.output[:, :, output_start_y:output_end_y,
-                            output_start_x:output_end_x] = output_tile[:, :, output_start_y_tile:output_end_y_tile,
-                                                                       output_start_x_tile:output_end_x_tile]
+                            output_start_x:output_end_x] = tile_core
 
     def post_process(self):
         # remove extra pad
@@ -221,9 +224,14 @@ class RealESRGANer():
             self.tile_process()
         else:
             self.process()
-        output_img = self.post_process()
-        output_img = output_img.data.squeeze().float().cpu().clamp_(0, 1).numpy()
-        output_img = np.transpose(output_img[[2, 1, 0], :, :], (1, 2, 0))
+        out_tensor = self.post_process().data.squeeze()
+        if max_range == 65535:
+            out_tensor = out_tensor.float().clamp_(0, 1).mul_(65535.0).round_()
+            output_img = out_tensor[[2, 1, 0], :, :].permute(1, 2, 0).contiguous().numpy().astype(np.uint16)
+        else:
+            out_tensor = out_tensor.float().clamp_(0, 1).mul_(255.0).round_().to(torch.uint8)
+            output_img = out_tensor[[2, 1, 0], :, :].permute(1, 2, 0).contiguous().numpy()
+
         if img_mode == 'L':
             output_img = cv2.cvtColor(output_img, cv2.COLOR_BGR2GRAY)
 
@@ -235,23 +243,28 @@ class RealESRGANer():
                     self.tile_process()
                 else:
                     self.process()
-                output_alpha = self.post_process()
-                output_alpha = output_alpha.data.squeeze().float().cpu().clamp_(0, 1).numpy()
-                output_alpha = np.transpose(output_alpha[[2, 1, 0], :, :], (1, 2, 0))
+                out_alpha_tensor = self.post_process().data.squeeze()
+                if max_range == 65535:
+                    out_alpha_tensor = out_alpha_tensor.float().clamp_(0, 1).mul_(65535.0).round_()
+                    output_alpha = out_alpha_tensor[[2, 1, 0], :, :].permute(1, 2, 0).contiguous().numpy().astype(np.uint16)
+                else:
+                    out_alpha_tensor = out_alpha_tensor.float().clamp_(0, 1).mul_(255.0).round_().to(torch.uint8)
+                    output_alpha = out_alpha_tensor[[2, 1, 0], :, :].permute(1, 2, 0).contiguous().numpy()
                 output_alpha = cv2.cvtColor(output_alpha, cv2.COLOR_BGR2GRAY)
             else:  # use the cv2 resize for alpha channel
                 h, w = alpha.shape[0:2]
                 output_alpha = cv2.resize(alpha, (w * self.scale, h * self.scale), interpolation=cv2.INTER_LINEAR)
+                if max_range == 65535:
+                    output_alpha = (output_alpha * 65535.0).round().astype(np.uint16)
+                else:
+                    output_alpha = (output_alpha * 255.0).round().astype(np.uint8)
 
             # merge the alpha channel
             output_img = cv2.cvtColor(output_img, cv2.COLOR_BGR2BGRA)
             output_img[:, :, 3] = output_alpha
 
         # ------------------------------ return ------------------------------ #
-        if max_range == 65535:  # 16-bit image
-            output = (output_img * 65535.0).round().astype(np.uint16)
-        else:
-            output = (output_img * 255.0).round().astype(np.uint8)
+        output = output_img
 
         if outscale is not None and outscale != float(self.scale):
             output = cv2.resize(
@@ -259,6 +272,14 @@ class RealESRGANer():
                     int(w_input * outscale),
                     int(h_input * outscale),
                 ), interpolation=cv2.INTER_LANCZOS4)
+
+        # Cleanup internal buffers to avoid keeping large arrays in memory
+        self.output = None
+        self.img = None
+        import gc
+        gc.collect()
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
 
         return output, img_mode
 

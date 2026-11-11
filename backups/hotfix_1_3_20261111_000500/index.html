@@ -1,0 +1,3917 @@
+<!DOCTYPE html>
+<html lang="vi" data-theme="dark">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AI Image Studio — v2.0 Turbo</title>
+<style>
+/* ═══════════════════════════════════════════════════════════════ */
+/* Design Tokens & Theme Variables                                */
+/* ═══════════════════════════════════════════════════════════════ */
+:root {
+  --bg-primary: #0b0d14;
+  --bg-secondary: #121522;
+  --bg-card: #171b2d;
+  --bg-card-hover: #1c2238;
+  --bg-input: #1d233a;
+  --bg-hover: #262e4c;
+  --text-primary: #f1f5f9;
+  --text-secondary: #94a3b8;
+  --text-muted: #64748b;
+  --accent: #4f8cff;
+  --accent-hover: #3b77eb;
+  --accent-dim: rgba(79, 140, 255, 0.12);
+  --accent-glow: rgba(79, 140, 255, 0.25);
+  --success: #10b981;
+  --error: #ef4444;
+  --warning: #f59e0b;
+  --border: #242b45;
+  --border-focus: #4f8cff;
+  --shadow: 0 4px 20px rgba(0, 0, 0, 0.35);
+  --radius: 10px;
+  --radius-sm: 6px;
+  --radius-pill: 9999px;
+  --transition: 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  --header-height: 52px;
+  --sidebar-width: 320px;
+}
+
+[data-theme="light"] {
+  --bg-primary: #f4f6f9;
+  --bg-secondary: #ffffff;
+  --bg-card: #ffffff;
+  --bg-card-hover: #f8fafc;
+  --bg-input: #eef2f6;
+  --bg-hover: #e2e8f0;
+  --text-primary: #0f172a;
+  --text-secondary: #475569;
+  --text-muted: #94a3b8;
+  --border: #e2e8f0;
+  --shadow: 0 4px 20px rgba(0, 0, 0, 0.06);
+}
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html { font-size: 14px; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  -webkit-font-smoothing: antialiased;
+}
+
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: var(--text-muted); }
+
+button { cursor: pointer; border: none; font-family: inherit; font-size: 0.85rem; }
+input, select { font-family: inherit; font-size: 0.85rem; }
+
+/* ═══════════════════════════════════════════════════════════════ */
+/* Header Component                                               */
+/* ═══════════════════════════════════════════════════════════════ */
+.header {
+  height: var(--header-height);
+  background: var(--bg-secondary);
+  border-bottom: 1px solid var(--border);
+  padding: 0 1.25rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  z-index: 100;
+  flex-shrink: 0;
+}
+
+.header-brand {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  white-space: nowrap;
+}
+.header-brand .icon {
+  font-size: 1.25rem;
+  color: var(--accent);
+  line-height: 1;
+}
+.header-brand-title {
+  font-size: 1.15rem;
+  font-weight: 700;
+  letter-spacing: -0.2px;
+  color: var(--text-primary);
+}
+.version-badge {
+  background: var(--accent-dim);
+  color: var(--accent);
+  border: 1px solid rgba(79, 140, 255, 0.25);
+  font-size: 0.7rem;
+  font-weight: 700;
+  padding: 2px 7px;
+  border-radius: var(--radius-pill);
+  letter-spacing: 0.3px;
+}
+
+/* GPU & VRAM Status Pill */
+.gpu-monitor {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  padding: 0.3rem 0.8rem;
+  border-radius: var(--radius-pill);
+  font-size: 0.8rem;
+}
+.gpu-chip {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+.status-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--warning);
+  display: inline-block;
+}
+.status-dot.ok { background: var(--success); box-shadow: 0 0 6px var(--success); }
+
+.vram-wrapper {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  padding-left: 0.5rem;
+  border-left: 1px solid var(--border);
+}
+.gpu-vram-bar {
+  width: 75px;
+  height: 6px;
+  background: var(--bg-input);
+  border-radius: 3px;
+  overflow: hidden;
+}
+.gpu-vram-fill {
+  height: 100%;
+  background: var(--accent);
+  border-radius: 3px;
+  transition: width 0.4s ease;
+}
+#vramText {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.worker-badge {
+  font-size: 0.7rem;
+  font-weight: 700;
+  padding: 2px 7px;
+  border-radius: 6px;
+  letter-spacing: 0.5px;
+}
+.worker-READY { background: rgba(16, 185, 129, 0.15); color: var(--success); }
+.worker-BUSY { background: rgba(79, 140, 255, 0.18); color: var(--accent); }
+.worker-ERROR { background: rgba(239, 68, 68, 0.18); color: var(--error); }
+.worker-RECOVERING { background: rgba(245, 158, 11, 0.18); color: var(--warning); }
+.worker-STOPPED { background: var(--bg-input); color: var(--text-muted); }
+
+.header-right {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+.lang-switch {
+  display: flex;
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 2px;
+  gap: 2px;
+}
+.btn-lang {
+  background: transparent;
+  color: var(--text-secondary);
+  padding: 0.25rem 0.55rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  border-radius: 4px;
+  transition: all var(--transition);
+}
+.btn-lang.active {
+  background: var(--accent);
+  color: #fff;
+}
+
+.theme-toggle {
+  background: var(--bg-input);
+  color: var(--text-primary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 0.35rem 0.6rem;
+  font-size: 1rem;
+  line-height: 1;
+  transition: background var(--transition);
+}
+.theme-toggle:hover {
+  background: var(--bg-hover);
+}
+
+/* ═══════════════════════════════════════════════════════════════ */
+/* Navigation Tabs                                                 */
+/* ═══════════════════════════════════════════════════════════════ */
+.nav-tabs {
+  background: var(--bg-secondary);
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  padding: 0 1.25rem;
+  gap: 0.5rem;
+  flex-shrink: 0;
+}
+.nav-tab {
+  background: transparent;
+  color: var(--text-secondary);
+  padding: 0.55rem 1rem;
+  font-size: 0.85rem;
+  font-weight: 600;
+  border-bottom: 2px solid transparent;
+  transition: all var(--transition);
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+.nav-tab:hover {
+  color: var(--text-primary);
+}
+.nav-tab.active {
+  color: var(--accent);
+  border-bottom-color: var(--accent);
+}
+
+/* ═══════════════════════════════════════════════════════════════ */
+/* Processing Settings Toolbar                                     */
+/* ═══════════════════════════════════════════════════════════════ */
+.toolbar-settings {
+  background: var(--bg-card);
+  border-bottom: 1px solid var(--border);
+  padding: 0.45rem 1.25rem;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem;
+  flex-shrink: 0;
+}
+.settings-group {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+}
+.settings-label {
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+  white-space: nowrap;
+  font-weight: 600;
+}
+.settings-input-wrapper {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+.settings-path-input {
+  background: var(--bg-input);
+  color: var(--text-primary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 0.35rem 0.65rem;
+  width: 175px;
+  font-size: 0.8rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: border-color var(--transition);
+}
+.settings-path-input:hover {
+  border-color: var(--text-muted);
+}
+.settings-select {
+  background: var(--bg-input);
+  color: var(--text-primary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 0.35rem 0.65rem;
+  font-size: 0.8rem;
+  outline: none;
+  cursor: pointer;
+  appearance: auto;
+}
+.settings-select:focus {
+  border-color: var(--accent);
+}
+.settings-divider {
+  width: 1px;
+  height: 22px;
+  background: var(--border);
+  margin: 0 0.15rem;
+}
+.range-slider {
+  vertical-align: middle;
+  cursor: pointer;
+  accent-color: var(--accent);
+  width: 75px;
+}
+
+/* Common Buttons */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.35rem;
+  padding: 0.4rem 0.85rem;
+  border-radius: var(--radius-sm);
+  font-weight: 600;
+  transition: all var(--transition);
+  white-space: nowrap;
+}
+.btn-primary {
+  background: var(--accent);
+  color: #fff;
+  box-shadow: 0 2px 8px var(--accent-glow);
+}
+.btn-primary:hover:not(:disabled) {
+  background: var(--accent-hover);
+}
+.btn-primary:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  box-shadow: none;
+}
+.btn-secondary {
+  background: var(--bg-input);
+  color: var(--text-primary);
+  border: 1px solid var(--border);
+}
+.btn-secondary:hover:not(:disabled) {
+  background: var(--bg-hover);
+  border-color: var(--text-muted);
+}
+.btn-secondary:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.btn-danger {
+  background: var(--error);
+  color: #fff;
+}
+.btn-danger:hover {
+  background: #dc2626;
+}
+.btn-sm {
+  padding: 0.3rem 0.6rem;
+  font-size: 0.78rem;
+}
+.btn-block {
+  width: 100%;
+}
+
+/* ═══════════════════════════════════════════════════════════════ */
+/* Main Workspace Layout (Two-Column)                             */
+/* ═══════════════════════════════════════════════════════════════ */
+.main {
+  display: flex;
+  flex: 1;
+  overflow: hidden;
+  height: calc(100vh - var(--header-height) - 78px);
+}
+
+.panel-left {
+  width: var(--sidebar-width);
+  min-width: 280px;
+  max-width: 340px;
+  background: var(--bg-secondary);
+  border-right: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  padding: 0.9rem;
+  gap: 0.85rem;
+  overflow-y: auto;
+  flex-shrink: 0;
+}
+
+.panel-right {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-primary);
+  overflow: hidden;
+}
+
+/* Sidebar Cards */
+.sidebar-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 0.85rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+}
+.sidebar-card-title {
+  font-size: 0.82rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--text-secondary);
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.input-actions-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.5rem;
+}
+
+/* Drop Zone */
+.dropzone {
+  padding: 1.4rem 0.8rem;
+  border: 2px dashed var(--border);
+  border-radius: var(--radius-sm);
+  text-align: center;
+  color: var(--text-muted);
+  transition: all var(--transition);
+  cursor: pointer;
+  background: rgba(31, 37, 60, 0.4);
+}
+.dropzone:hover, .dropzone.dragover {
+  border-color: var(--accent);
+  background: var(--accent-dim);
+  color: var(--accent);
+}
+.dropzone-icon {
+  font-size: 1.8rem;
+  margin-bottom: 0.3rem;
+  line-height: 1;
+}
+.dropzone-title {
+  font-size: 0.88rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin-bottom: 0.2rem;
+}
+.dropzone-text {
+  font-size: 0.74rem;
+  color: var(--text-secondary);
+  line-height: 1.35;
+}
+
+/* Folder Status Box */
+.folder-status-box {
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 0.6rem 0.75rem;
+  font-size: 0.8rem;
+}
+.folder-status-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 0.3rem;
+}
+.folder-status-path {
+  font-family: monospace;
+  font-size: 0.75rem;
+  color: var(--accent);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  margin-bottom: 0.4rem;
+}
+
+/* Batch Upload Feedback */
+.batch-feedback {
+  display: none;
+  background: var(--accent-dim);
+  border: 1px solid var(--accent);
+  border-radius: var(--radius-sm);
+  padding: 0.55rem 0.75rem;
+  font-size: 0.76rem;
+  line-height: 1.4;
+  color: var(--text-primary);
+}
+
+/* Sidebar Statistics Card */
+.stats-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 0.45rem;
+}
+.stat-item {
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 0.45rem 0.6rem;
+  display: flex;
+  flex-direction: column;
+}
+.stat-item.span-2 {
+  grid-column: span 2;
+}
+.stat-label {
+  font-size: 0.72rem;
+  color: var(--text-secondary);
+}
+.stat-val {
+  font-size: 1.15rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin-top: 0.1rem;
+}
+.stat-val.val-pending { color: var(--warning); }
+.stat-val.val-processing { color: var(--accent); }
+.stat-val.val-completed { color: var(--success); }
+.stat-val.val-error { color: var(--error); }
+
+.sidebar-progress-wrapper {
+  margin-top: 0.3rem;
+}
+.sidebar-progress-label {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.74rem;
+  color: var(--text-secondary);
+  margin-bottom: 0.25rem;
+}
+.sidebar-progress-bar {
+  height: 6px;
+  background: var(--bg-input);
+  border-radius: 3px;
+  overflow: hidden;
+}
+.sidebar-progress-fill {
+  height: 100%;
+  width: 0%;
+  background: var(--success);
+  transition: width 0.3s ease;
+}
+
+.stats-actions {
+  display: flex;
+  gap: 0.45rem;
+  margin-top: 0.2rem;
+}
+
+/* ═══════════════════════════════════════════════════════════════ */
+/* Right Panel / Image Queue                                       */
+/* ═══════════════════════════════════════════════════════════════ */
+.panel-header {
+  padding: 0.65rem 1.25rem;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-secondary);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-shrink: 0;
+}
+.panel-title {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.95rem;
+  font-weight: 700;
+}
+.panel-title .badge {
+  background: var(--accent-dim);
+  color: var(--accent);
+  border: 1px solid rgba(79, 140, 255, 0.2);
+  font-size: 0.72rem;
+  padding: 2px 7px;
+  border-radius: var(--radius-pill);
+}
+.folder-indicator {
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  max-width: 380px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Filter Toolbar */
+.filter-toolbar {
+  background: var(--bg-card);
+  border-bottom: 1px solid var(--border);
+  padding: 0.45rem 1.25rem;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.6rem;
+  flex-shrink: 0;
+}
+.toolbar-left, .toolbar-right {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+.search-input {
+  background: var(--bg-input);
+  color: var(--text-primary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 0.32rem 0.65rem;
+  font-size: 0.8rem;
+  width: 175px;
+}
+.search-input:focus {
+  border-color: var(--accent);
+  outline: none;
+}
+.filter-select {
+  background: var(--bg-input);
+  color: var(--text-primary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 0.32rem 0.6rem;
+  font-size: 0.8rem;
+  appearance: auto;
+  outline: none;
+}
+
+.view-btn {
+  background: var(--bg-input);
+  color: var(--text-secondary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 0.32rem 0.55rem;
+  font-size: 0.85rem;
+  line-height: 1;
+  transition: all var(--transition);
+}
+.view-btn.active {
+  background: var(--accent);
+  color: #fff;
+  border-color: var(--accent);
+}
+
+.batch-dropdown {
+  position: relative;
+  display: inline-block;
+}
+.batch-dropdown-menu {
+  display: none;
+  position: absolute;
+  right: 0;
+  top: 100%;
+  margin-top: 4px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow);
+  z-index: 150;
+  min-width: 190px;
+  overflow: hidden;
+}
+.batch-dropdown-menu.show {
+  display: block;
+}
+.batch-dropdown-item {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 0.5rem 0.8rem;
+  background: transparent;
+  color: var(--text-primary);
+  font-size: 0.8rem;
+  border-bottom: 1px solid var(--border);
+  transition: background var(--transition);
+}
+.batch-dropdown-item:hover {
+  background: var(--bg-hover);
+  color: var(--accent);
+}
+
+/* File List Area */
+.file-list {
+  flex: 1;
+  overflow-y: auto;
+  padding: 0.9rem 1.25rem;
+  position: relative;
+}
+
+/* Empty State */
+.file-list-empty {
+  height: 100%;
+  min-height: 320px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.empty-queue-container {
+  max-width: 460px;
+  text-align: center;
+  padding: 2.2rem 1.8rem;
+  background: var(--bg-card);
+  border: 1px dashed var(--border);
+  border-radius: var(--radius);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+.empty-queue-icon {
+  font-size: 3rem;
+  margin-bottom: 0.8rem;
+  line-height: 1;
+  filter: drop-shadow(0 4px 12px var(--accent-glow));
+}
+.empty-queue-title {
+  font-size: 1.15rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin-bottom: 0.4rem;
+}
+.empty-queue-desc {
+  font-size: 0.82rem;
+  color: var(--text-secondary);
+  line-height: 1.45;
+  margin-bottom: 1.2rem;
+}
+.empty-queue-actions {
+  display: flex;
+  gap: 0.65rem;
+  margin-bottom: 0.9rem;
+}
+.empty-queue-tip {
+  font-size: 0.74rem;
+  color: var(--text-muted);
+}
+
+/* Grid View Mode */
+.file-list.view-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 0.85rem;
+  align-content: start;
+}
+.file-list.view-grid .file-item {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  transition: transform var(--transition), border-color var(--transition), box-shadow var(--transition);
+}
+.file-list.view-grid .file-item:hover {
+  border-color: var(--text-muted);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25);
+  transform: translateY(-2px);
+}
+.file-list.view-grid .card-top {
+  position: relative;
+  height: 135px;
+  background: #090b12;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+.file-list.view-grid .card-top-badges {
+  position: absolute;
+  top: 6px;
+  left: 6px;
+  right: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  z-index: 2;
+}
+.card-checkbox {
+  width: 15px;
+  height: 15px;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+.file-list.view-grid .file-thumb {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+}
+.file-list.view-grid .card-body {
+  padding: 0.65rem 0.75rem;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+.file-name {
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.file-meta {
+  font-size: 0.72rem;
+  color: var(--text-secondary);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  align-items: center;
+}
+.file-meta-pill {
+  background: var(--bg-input);
+  padding: 1px 5px;
+  border-radius: 4px;
+}
+.file-meta-source {
+  font-size: 0.68rem;
+  font-weight: 600;
+  padding: 1px 5px;
+  border-radius: 4px;
+  background: rgba(79, 140, 255, 0.15);
+  color: var(--accent);
+}
+.file-meta-source.source-folder {
+  background: rgba(245, 158, 11, 0.15);
+  color: var(--warning);
+}
+.file-progress {
+  height: 4px;
+  background: var(--bg-input);
+  border-radius: 2px;
+  overflow: hidden;
+  margin-top: 0.2rem;
+}
+.file-progress-bar {
+  height: 100%;
+  background: var(--accent);
+  border-radius: 2px;
+  transition: width 0.2s ease;
+}
+.file-list.view-grid .card-footer {
+  padding: 0.45rem 0.75rem;
+  background: rgba(0, 0, 0, 0.15);
+  border-top: 1px solid var(--border);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 0.72rem;
+  color: var(--text-muted);
+}
+.file-actions {
+  display: flex;
+  gap: 0.3rem;
+}
+.file-actions button {
+  background: var(--bg-input);
+  color: var(--text-secondary);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 2px 6px;
+  font-size: 0.72rem;
+  transition: all var(--transition);
+}
+.file-actions button:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+  border-color: var(--text-muted);
+}
+
+/* List View Mode */
+.file-list.view-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+}
+.file-list.view-list .file-item {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 0.5rem 0.85rem;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  transition: background var(--transition);
+}
+.file-list.view-list .file-item:hover {
+  background: var(--bg-card-hover);
+  border-color: var(--text-muted);
+}
+.file-list.view-list .file-thumb {
+  width: 44px;
+  height: 44px;
+  border-radius: 4px;
+  object-fit: cover;
+  background: #090b12;
+  flex-shrink: 0;
+}
+.file-list.view-list .file-info {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+.file-list.view-list .file-status {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  flex-shrink: 0;
+}
+
+/* Status Badges */
+.status-badge {
+  font-size: 0.7rem;
+  font-weight: 700;
+  padding: 2px 7px;
+  border-radius: 4px;
+  white-space: nowrap;
+  letter-spacing: 0.2px;
+}
+.status-pending, .status-queued { background: rgba(148, 163, 184, 0.15); color: #94a3b8; }
+.status-validating { background: rgba(56, 189, 248, 0.15); color: #38bdf8; }
+.status-processing { background: rgba(79, 140, 255, 0.18); color: var(--accent); }
+.status-retry, .status-retry_wait { background: rgba(245, 158, 11, 0.18); color: var(--warning); }
+.status-completed { background: rgba(16, 185, 129, 0.15); color: var(--success); }
+.status-error, .status-failed { background: rgba(239, 68, 68, 0.15); color: var(--error); }
+.status-cancel_requested { background: rgba(168, 85, 247, 0.18); color: #a855f7; }
+.status-cancelled { background: var(--bg-input); color: var(--text-muted); }
+
+/* Pagination Bar */
+.pagination-bar {
+  padding: 0.5rem 1.25rem;
+  background: var(--bg-secondary);
+  border-top: 1px solid var(--border);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+  flex-shrink: 0;
+}
+
+/* Status Bar */
+.statusbar {
+  height: 26px;
+  background: var(--bg-secondary);
+  border-top: 1px solid var(--border);
+  padding: 0 1.25rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 0.74rem;
+  color: var(--text-secondary);
+  flex-shrink: 0;
+}
+.statusbar-progress {
+  width: 140px;
+  height: 5px;
+  background: var(--bg-input);
+  border-radius: 3px;
+  overflow: hidden;
+  margin: 0 0.5rem;
+}
+.statusbar-progress-bar {
+  height: 100%;
+  width: 0%;
+  background: var(--accent);
+  transition: width 0.2s ease;
+}
+
+/* Modals & Overlays */
+.modal-overlay {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.65);
+  backdrop-filter: blur(4px);
+  z-index: 1000;
+  align-items: center;
+  justify-content: center;
+}
+.modal-overlay.show { display: flex; }
+.modal {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: 0 12px 36px rgba(0, 0, 0, 0.5);
+  width: 520px;
+  max-width: 95vw;
+  max-height: 85vh;
+  display: flex;
+  flex-direction: column;
+}
+.modal-header {
+  padding: 0.75rem 1rem;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-weight: 700;
+}
+.modal-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 0.85rem 1rem;
+}
+.modal-footer {
+  padding: 0.65rem 1rem;
+  border-top: 1px solid var(--border);
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
+}
+.modal-path {
+  padding: 0.45rem 1rem;
+  background: var(--bg-input);
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.8rem;
+  font-family: monospace;
+}
+.folder-item {
+  padding: 0.4rem 0.6rem;
+  border-radius: 4px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.82rem;
+}
+.folder-item:hover {
+  background: var(--bg-hover);
+}
+
+/* Toasts */
+.toast-container {
+  position: fixed;
+  bottom: 35px;
+  right: 20px;
+  z-index: 2000;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+.toast {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 0.6rem 0.9rem;
+  color: var(--text-primary);
+  font-size: 0.82rem;
+  box-shadow: var(--shadow);
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  animation: slideIn 0.25s ease;
+}
+.toast.success { border-left: 3px solid var(--success); }
+.toast.error { border-left: 3px solid var(--error); }
+.toast.info { border-left: 3px solid var(--accent); }
+.toast.warning { border-left: 3px solid var(--warning); }
+@keyframes slideIn {
+  from { transform: translateX(100%); opacity: 0; }
+  to { transform: translateX(0); opacity: 1; }
+}
+
+/* Video Section (Preserved Styles) */
+.video-section {
+  flex: 1;
+  overflow-y: auto;
+  padding: 1.2rem;
+}
+.video-grid {
+  display: grid;
+  grid-template-columns: 360px 1fr;
+  gap: 1.2rem;
+}
+.video-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+.video-card-title {
+  font-size: 0.95rem;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+.meta-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.82rem;
+}
+.meta-table td {
+  padding: 0.35rem 0.2rem;
+  border-bottom: 1px solid rgba(255,255,255,0.04);
+}
+.meta-table td:first-child {
+  color: var(--text-secondary);
+  width: 45%;
+}
+.meta-table td:last-child {
+  font-weight: 600;
+  text-align: right;
+}
+.stage-stepper {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  margin: 0.3rem 0;
+}
+.stage-pill {
+  font-size: 0.72rem;
+  padding: 2px 7px;
+  border-radius: 4px;
+  background: var(--bg-input);
+  color: var(--text-secondary);
+}
+.stage-pill.active {
+  background: var(--accent);
+  color: #fff;
+  font-weight: 600;
+}
+.stage-pill.done {
+  background: rgba(16, 185, 129, 0.15);
+  color: var(--success);
+}
+.video-player-wrap {
+  width: 100%;
+  background: #000;
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+  max-height: 380px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.video-player-wrap video {
+  max-width: 100%;
+  max-height: 380px;
+}
+.video-jobs-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.82rem;
+}
+.video-jobs-table th, .video-jobs-table td {
+  padding: 0.5rem 0.6rem;
+  text-align: left;
+  border-bottom: 1px solid var(--border);
+}
+.video-jobs-table th {
+  color: var(--text-secondary);
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  background: var(--bg-input);
+}
+
+/* ═══════════════════════════════════════════════════════════════ */
+/* Responsive Adaptation                                          */
+/* ═══════════════════════════════════════════════════════════════ */
+@media (max-width: 1600px) {
+  :root {
+    --sidebar-width: 300px;
+  }
+  .settings-path-input {
+    width: 145px;
+  }
+}
+
+@media (max-width: 1366px) {
+  :root {
+    --sidebar-width: 280px;
+  }
+  .toolbar-settings {
+    gap: 0.5rem;
+    padding: 0.4rem 1rem;
+  }
+  .settings-path-input {
+    width: 130px;
+  }
+  .search-input {
+    width: 140px;
+  }
+}
+
+@media (max-width: 992px) {
+  .main {
+    flex-direction: column;
+    overflow-y: auto;
+  }
+  .panel-left {
+    width: 100%;
+    max-width: none;
+    border-right: none;
+    border-bottom: 1px solid var(--border);
+  }
+  .video-grid {
+    grid-template-columns: 1fr;
+  }
+}
+</style>
+</head>
+<body>
+
+<!-- ═══════════════ Header ═══════════════ -->
+<header class="header">
+  <div class="header-brand">
+    <span class="icon">✦</span>
+    <span class="header-brand-title" data-i18n="app_title">AI Image Studio</span>
+    <span class="version-badge" data-i18n="version_badge">v2.0 Turbo</span>
+  </div>
+
+  <!-- Real-time GPU & VRAM Status Pill -->
+  <div class="gpu-monitor" id="gpuMonitor" title="GPU & VRAM Status">
+    <div class="gpu-chip">
+      <span class="status-dot ok" id="statusDot"></span>
+      <span id="gpuName">RTX 2050</span>
+    </div>
+    <div class="vram-wrapper">
+      <span style="font-size:0.75rem;color:var(--text-secondary);">VRAM:</span>
+      <div class="gpu-vram-bar"><div class="gpu-vram-fill" id="vramFill" style="width:0%"></div></div>
+      <span id="vramText">0/4 GB</span>
+    </div>
+    <span class="worker-badge worker-READY" id="workerBadge">READY</span>
+  </div>
+
+  <div class="header-right">
+    <!-- Language Switcher -->
+    <div class="lang-switch" id="langSwitch">
+      <button class="btn-lang" id="btnLangVi" onclick="setLanguage('vi')">VN</button>
+      <button class="btn-lang" id="btnLangEn" onclick="setLanguage('en')">EN</button>
+    </div>
+
+    <!-- Theme Toggle -->
+    <button class="theme-toggle" id="themeToggle" onclick="toggleTheme()" title="Toggle theme">🌙</button>
+  </div>
+</header>
+
+<!-- Main Navigation Tabs -->
+<div class="nav-tabs">
+  <button class="nav-tab active" id="tabImage" onclick="switchMainTab('image')" data-i18n="tab_image_upscale">🖼️ Nâng cấp Ảnh</button>
+  <button class="nav-tab" id="tabVideo" onclick="switchMainTab('video')" data-i18n="tab_video_upscale">🎬 Nâng cấp Video</button>
+</div>
+
+<!-- Image Enhancement Section -->
+<div id="imageSection" style="display:flex; flex-direction:column; flex:1; overflow:hidden;">
+
+  <!-- Processing Settings Toolbar -->
+  <div class="toolbar-settings">
+    <!-- Folder Group -->
+    <div class="settings-group">
+      <span class="settings-label" data-i18n="folder_input">Thư mục đầu vào:</span>
+      <div class="settings-input-wrapper">
+        <input type="text" class="settings-path-input" id="inputFolder" placeholder="Default: uploads" readonly onclick="showPathDetails('input')" title="Click để xem đường dẫn đầy đủ">
+      </div>
+      <button class="btn btn-secondary btn-sm" id="btnBrowseInput" onclick="browseFolderNative('input')" title="Duyệt thư mục ảnh" data-i18n="browse">Duyệt</button>
+      <button class="btn btn-secondary btn-sm" id="btnResetInputFolder" onclick="resetToUploads()" title="Về mặc định uploads" style="display:none;" data-i18n="btn_reset_folder">↺ uploads</button>
+      <button class="btn btn-secondary btn-sm" id="btnRefreshInput" onclick="refreshCurrentFolder()" title="Làm mới thư mục" data-i18n="refresh">🔄</button>
+    </div>
+
+    <div class="settings-divider"></div>
+
+    <div class="settings-group">
+      <span class="settings-label" data-i18n="folder_output">Thư mục xuất:</span>
+      <div class="settings-input-wrapper">
+        <input type="text" class="settings-path-input" id="outputFolder" placeholder="Default output folder" readonly onclick="showPathDetails('output')" title="Click để xem đường dẫn đầy đủ">
+      </div>
+      <button class="btn btn-secondary btn-sm" id="btnBrowseOutput" onclick="browseFolderNative('output')" title="Duyệt thư mục xuất" data-i18n="browse">Duyệt</button>
+      <button class="btn btn-secondary btn-sm" id="btnOpenOutput" onclick="openOutputFolder()" data-i18n="open_output">📁 Mở thư mục xuất</button>
+    </div>
+
+    <div class="settings-divider"></div>
+
+    <!-- Inference Config Group -->
+    <div class="settings-group">
+      <span class="settings-label" data-i18n="tile_label">Tile:</span>
+      <select class="settings-select" id="tileSize">
+        <option value="auto" selected data-i18n="tile_auto">Auto (Khuyến nghị)</option>
+        <option value="256" data-i18n="tile_speed">256 (Tốc độ cao)</option>
+        <option value="192" data-i18n="tile_balanced">192 (Cân bằng)</option>
+        <option value="128" data-i18n="tile_safe">128 (An toàn)</option>
+        <option value="96">96</option>
+        <option value="64" data-i18n="tile_vram_save">64 (Tiết kiệm VRAM)</option>
+        <option value="32" data-i18n="tile_min">32 (Tối thiểu)</option>
+        <option value="0" data-i18n="tile_no">0 (Không chia Tile)</option>
+      </select>
+    </div>
+
+    <div class="settings-group">
+      <span class="settings-label" data-i18n="format_label">Định dạng:</span>
+      <select class="settings-select" id="exportFormat" onchange="toggleQualitySlider()">
+        <option value="auto" selected data-i18n="format_auto">Auto (Giữ nguyên)</option>
+        <option value="webp" data-i18n="format_webp">WEBP (Tối ưu web)</option>
+        <option value="png" data-i18n="format_png">PNG (Lossless)</option>
+        <option value="jpg" data-i18n="format_jpg">JPG (Nhỏ gọn)</option>
+      </select>
+    </div>
+
+    <div class="settings-group" id="qualityGroup" style="display:none">
+      <span class="settings-label" data-i18n="quality_label">Chất lượng:</span>
+      <input type="range" class="range-slider" id="exportQuality" min="50" max="100" value="95" oninput="document.getElementById('qualityVal').textContent = this.value + '%'">
+      <span id="qualityVal" style="font-size:0.75rem;font-weight:600;min-width:30px;">95%</span>
+    </div>
+
+    <div class="settings-divider"></div>
+
+    <!-- Primary Action Button -->
+    <button class="btn btn-primary" id="btnStart" disabled onclick="startProcessing()" data-i18n="btn_start">▶ Bắt đầu nâng cấp</button>
+    <button class="btn btn-danger" id="btnCancel" style="display:none" onclick="cancelProcessing()" data-i18n="btn_cancel">⏹ Hủy</button>
+  </div>
+
+  <!-- Main Workspace (Two-Column Layout) -->
+  <div class="main">
+    <!-- Left Sidebar: Selection & Statistics -->
+    <div class="panel-left">
+      <!-- Hidden file input for multi-image selection -->
+      <input type="file" id="imageFileInput" multiple accept=".jpg,.jpeg,.png,.webp,.bmp" style="display:none;" onchange="handleImageFileSelect(this.files)">
+
+      <!-- Input Actions Card -->
+      <div class="sidebar-card">
+        <div class="sidebar-card-title">
+          <span>📥</span>
+          <span data-i18n="add_images_title">Thêm ảnh xử lý</span>
+        </div>
+
+        <!-- Dual Primary Action Buttons -->
+        <div class="input-actions-grid">
+          <button class="btn btn-primary btn-block" id="btnChooseImages" onclick="document.getElementById('imageFileInput').click()">
+            <span>🖼️</span> <span data-i18n="btn_choose_images">Chọn tệp ảnh</span>
+          </button>
+          <button class="btn btn-secondary btn-block" id="btnChooseFolderMain" onclick="browseFolderNative('input')">
+            <span>📁</span> <span data-i18n="btn_choose_folder">Chọn thư mục</span>
+          </button>
+        </div>
+
+        <!-- Drag & Drop Zone -->
+        <div class="dropzone" id="dropzone">
+          <div class="dropzone-icon">📸</div>
+          <div class="dropzone-title" data-i18n="drop_title">Kéo & Thả ảnh hoặc Thư mục</div>
+          <div class="dropzone-text" data-i18n="drop_text">Hỗ trợ nhiều tệp & quét thư mục con. Tự động lưu vào uploads</div>
+        </div>
+
+        <!-- Folder Status Box (Visible when a custom folder is active) -->
+        <div id="folderStatusBox" class="folder-status-box" style="display:none;">
+          <div class="folder-status-header">
+            <strong style="font-size:0.76rem;text-transform:uppercase;color:var(--text-secondary);">📂 <span data-i18n="folder_input">Thư mục đầu vào</span></strong>
+            <span id="folderCountBadge" class="badge" style="font-size:0.72rem;">0 ảnh</span>
+          </div>
+          <div id="folderSelectedPath" class="folder-status-path" title=""></div>
+          <div id="folderEmptyAlert" style="display:none; color:var(--warning); font-size:0.75rem; margin-bottom:0.4rem;">⚠️ <span data-i18n="folder_empty_warning">Thư mục không có ảnh hợp lệ.</span></div>
+          <div style="display:flex; gap:0.4rem; justify-content:flex-end;">
+            <button class="btn btn-secondary btn-sm" id="btnChangeFolderStatus" onclick="browseFolderNative('input')" data-i18n="btn_change_folder">🔄 Đổi thư mục</button>
+            <button class="btn btn-secondary btn-sm" id="btnResetFolderStatus" onclick="resetToUploads()" data-i18n="btn_reset_folder">↺ uploads</button>
+          </div>
+        </div>
+
+        <!-- Batch Upload Feedback -->
+        <div class="batch-feedback" id="batchFeedback">
+          <div id="batchFeedbackText"></div>
+        </div>
+      </div>
+
+      <!-- Sidebar Statistics Card -->
+      <div class="sidebar-card">
+        <div class="sidebar-card-title">
+          <span>📊</span>
+          <span data-i18n="queue_stats_title">Thống kê hàng đợi</span>
+        </div>
+
+        <div class="stats-grid">
+          <div class="stat-item span-2">
+            <span class="stat-label" data-i18n="total_files">Tổng số ảnh:</span>
+            <span class="stat-val" id="sumTotal">0</span>
+          </div>
+          <div class="stat-item">
+            <span class="stat-label" data-i18n="pending_files">Đang chờ:</span>
+            <span class="stat-val val-pending" id="sumPending">0</span>
+          </div>
+          <div class="stat-item">
+            <span class="stat-label" data-i18n="processing_stat">Đang xử lý:</span>
+            <span class="stat-val val-processing" id="sumProcessing">0</span>
+          </div>
+          <div class="stat-item">
+            <span class="stat-label" data-i18n="completed_files">Hoàn thành:</span>
+            <span class="stat-val val-completed" id="sumDone">0</span>
+          </div>
+          <div class="stat-item">
+            <span class="stat-label" data-i18n="error_files">Thất bại:</span>
+            <span class="stat-val val-error" id="sumError">0</span>
+          </div>
+        </div>
+
+        <div class="sidebar-progress-wrapper">
+          <div class="sidebar-progress-label">
+            <span data-i18n="progress_stat">Tiến độ:</span>
+            <span id="sidebarProgressPct">0%</span>
+          </div>
+          <div class="sidebar-progress-bar">
+            <div class="sidebar-progress-fill" id="sidebarProgressFill"></div>
+          </div>
+        </div>
+
+        <div class="stats-actions">
+          <button class="btn btn-secondary btn-sm" id="btnRetryAll" style="display:none; flex:1;" onclick="retryAllFailed()" data-i18n="btn_retry_failed">🔄 Thử lại lỗi</button>
+          <button class="btn btn-secondary btn-sm" id="btnClearAll" style="flex:1;" onclick="clearAll()" data-i18n="btn_clear">✕ Xóa danh sách</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Right Workspace: Image Queue -->
+    <div class="panel-right">
+      <div class="panel-header">
+        <div class="panel-title">
+          <span data-i18n="queue_title">📋 Danh sách xử lý</span>
+          <span class="badge" id="queueBadge">0 items</span>
+        </div>
+        <span class="folder-indicator" id="currentFolderLabel">Folder: uploads</span>
+      </div>
+
+      <!-- Filter, Search, Sort & Batch Actions Toolbar -->
+      <div class="filter-toolbar">
+        <div class="toolbar-left">
+          <input type="text" class="search-input" id="filterSearch" placeholder="Tìm theo tên / ID..." data-i18n-ph="search_placeholder" oninput="applyFilters()">
+
+          <select class="filter-select" id="filterStatus" onchange="applyFilters()">
+            <option value="all" data-i18n="filter_all">Tất cả trạng thái</option>
+            <option value="pending" data-i18n="filter_queued">Chờ xử lý</option>
+            <option value="processing" data-i18n="filter_processing">Đang xử lý</option>
+            <option value="completed" data-i18n="filter_completed">Đã hoàn thành</option>
+            <option value="error" data-i18n="filter_failed">Thất bại</option>
+            <option value="cancelled" data-i18n="filter_cancelled">Đã hủy</option>
+          </select>
+
+          <select class="filter-select" id="sortOption" onchange="applyFilters()">
+            <option value="name_asc" data-i18n="sort_name_asc">Tên (A-Z)</option>
+            <option value="name_desc" data-i18n="sort_name_desc">Tên (Z-A)</option>
+            <option value="size_asc" data-i18n="sort_size_asc">Dung lượng (Tăng)</option>
+            <option value="size_desc" data-i18n="sort_size_desc">Dung lượng (Giảm)</option>
+            <option value="time" data-i18n="sort_time">Thời gian thêm</option>
+            <option value="duration" data-i18n="sort_duration">Thời gian xử lý</option>
+          </select>
+        </div>
+
+        <div class="toolbar-right">
+          <label style="display:flex;align-items:center;gap:0.35rem;font-size:0.8rem;color:var(--text-secondary);cursor:pointer;">
+            <input type="checkbox" id="chkSelectAll" onchange="toggleSelectAll(this.checked)" class="card-checkbox">
+            <span data-i18n="btn_select_all">Chọn tất cả</span> (<span id="selectedCount">0</span>)
+          </label>
+
+          <!-- Export ZIP Dropdown -->
+          <div class="batch-dropdown">
+            <button class="btn btn-secondary btn-sm" id="btnZipDropdown" onclick="toggleDropdown('zipMenu')" data-i18n="btn_export_zip">📦 Xuất ZIP ▾</button>
+            <div class="batch-dropdown-menu" id="zipMenu">
+              <button class="batch-dropdown-item" id="btnExportZipAll" onclick="exportZip('all')" data-i18n="export_zip_all">📦 Xuất tất cả hoàn thành (ZIP)</button>
+              <button class="batch-dropdown-item" id="btnExportZipSelected" onclick="exportZip('selected')" data-i18n="export_zip_selected">📦 Xuất các mục đã chọn (ZIP)</button>
+            </div>
+          </div>
+
+          <!-- Report Dropdown -->
+          <div class="batch-dropdown">
+            <button class="btn btn-secondary btn-sm" id="btnReportDropdown" onclick="toggleDropdown('reportMenu')" data-i18n="btn_export_report">📊 Báo cáo ▾</button>
+            <div class="batch-dropdown-menu" id="reportMenu">
+              <button class="batch-dropdown-item" id="btnReportCsvAll" onclick="exportReport('csv', 'all')" data-i18n="export_csv">📊 Xuất CSV (Excel UTF-8)</button>
+              <button class="batch-dropdown-item" id="btnReportHtmlAll" onclick="exportReport('html', 'all')" data-i18n="export_html">📊 Xuất Báo cáo HTML offline</button>
+              <button class="batch-dropdown-item" id="btnReportCsvSelected" onclick="exportReport('csv', 'selected')" data-i18n="export_csv_selected">📊 Xuất CSV mục đã chọn</button>
+              <button class="batch-dropdown-item" id="btnReportHtmlSelected" onclick="exportReport('html', 'selected')" data-i18n="export_html_selected">📊 Xuất HTML mục đã chọn</button>
+            </div>
+          </div>
+
+          <!-- View Mode Toggle -->
+          <div style="display:flex;gap:2px;margin-left:0.2rem;">
+            <button class="view-btn active" id="btnViewGrid" onclick="setViewMode('grid')" title="Grid View">▦</button>
+            <button class="view-btn" id="btnViewList" onclick="setViewMode('list')" title="List View">☰</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Recovery Banner -->
+      <div id="recoveryBanner" style="display:none; background:rgba(79,140,255,0.12); border:1px solid var(--accent); padding:0.5rem 1.25rem; align-items:center; justify-content:space-between; font-size:0.82rem; flex-shrink:0;">
+        <div style="display:flex; align-items:center; gap:0.5rem;">
+          <span style="font-size:1.1rem;">🔄</span>
+          <span id="recoveryBannerText" data-i18n="recovery_msg">Đã khôi phục các công việc bị gián đoạn từ phiên trước.</span>
+        </div>
+        <button class="btn btn-sm btn-secondary" onclick="document.getElementById('recoveryBanner').style.display='none'">✕</button>
+      </div>
+
+      <!-- Image Queue Container -->
+      <div class="file-list view-grid" id="fileList"></div>
+
+      <!-- Queue Pagination Bar -->
+      <div class="pagination-bar" id="queuePagination" style="display:none;">
+        <button class="btn btn-secondary btn-sm" id="btnPrevPage" onclick="changeQueuePage(-1)">◀ Trang trước</button>
+        <span id="paginationInfo">Trang 1 / 1</span>
+        <button class="btn btn-secondary btn-sm" id="btnNextPage" onclick="changeQueuePage(1)">Trang sau ▶</button>
+      </div>
+    </div>
+  </div>
+
+</div> <!-- /imageSection -->
+
+<!-- ═══════════════ Video Enhancement Section ═══════════════ -->
+<div id="videoSection" class="video-section" style="display:none;">
+  <div class="video-grid">
+    <!-- Left Column: Upload, Metadata & Settings -->
+    <div style="display:flex; flex-direction:column; gap:1.2rem;">
+      <!-- Video Dropzone -->
+      <div class="dropzone" id="videoDropzone" style="min-height:160px; cursor:pointer;" onclick="document.getElementById('videoFileInput').click()">
+        <div class="dropzone-icon">🎬</div>
+        <div class="dropzone-title" data-i18n="video_drop_title">Kéo & Thả Video vào đây</div>
+        <div class="dropzone-text" data-i18n="video_drop_text">Hỗ trợ MP4, MKV, MOV, AVI, WEBM. Xử lý khung hình với RealESRGAN_x4plus</div>
+        <input type="file" id="videoFileInput" accept=".mp4,.mkv,.mov,.avi,.webm" style="display:none;" onchange="handleVideoFileSelect(this.files)">
+      </div>
+
+      <!-- Video Analysis & Configuration Card -->
+      <div class="video-card" id="videoAnalysisCard" style="display:none;">
+        <div class="video-card-title">
+          <span>📹</span>
+          <span data-i18n="video_meta_title">Thông tin Video</span>
+        </div>
+        <table class="meta-table">
+          <tr><td data-i18n="video_filename">Tệp video:</td><td id="vMetaFilename">-</td></tr>
+          <tr><td data-i18n="video_resolution">Độ phân giải:</td><td id="vMetaRes">-</td></tr>
+          <tr><td data-i18n="video_target_res">Độ phân giải 4X:</td><td id="vMetaTargetRes" style="color:var(--accent);">-</td></tr>
+          <tr><td data-i18n="video_fps">Tốc độ khung hình:</td><td id="vMetaFps">-</td></tr>
+          <tr><td data-i18n="video_duration">Thời lượng:</td><td id="vMetaDuration">-</td></tr>
+          <tr><td data-i18n="video_total_frames">Tổng khung hình:</td><td id="vMetaFrames">-</td></tr>
+          <tr><td data-i18n="video_audio">Âm thanh:</td><td id="vMetaAudio">-</td></tr>
+          <tr><td data-i18n="video_storage_req">Dung lượng tạm:</td><td id="vMetaStorage">-</td></tr>
+          <tr><td data-i18n="video_disk_free">Ổ đĩa còn trống:</td><td id="vMetaFreeDisk">-</td></tr>
+        </table>
+
+        <!-- Video Processing Controls -->
+        <div style="display:flex; flex-direction:column; gap:0.6rem; margin-top:0.5rem; border-top:1px solid var(--border); padding-top:0.8rem;">
+          <div style="display:flex; align-items:center; justify-content:space-between;">
+            <span style="font-size:0.85rem; color:var(--text-secondary);" data-i18n="video_quality">Chất lượng:</span>
+            <select class="ctrl-select" id="videoQualityPreset" style="width:160px;">
+              <option value="balanced" selected data-i18n="quality_balanced">Cân bằng (CRF 22)</option>
+              <option value="high" data-i18n="quality_high">Chất lượng cao (CRF 18)</option>
+              <option value="fast" data-i18n="quality_fast">Tốc độ cao (CRF 26)</option>
+            </select>
+          </div>
+          <div style="display:flex; align-items:center; justify-content:space-between;">
+            <span style="font-size:0.85rem; color:var(--text-secondary);" data-i18n="tile_label">Tile:</span>
+            <select class="ctrl-select" id="videoTileSize" style="width:160px;">
+              <option value="auto" selected data-i18n="tile_auto">Auto (Khuyến nghị)</option>
+              <option value="256">256 (Tốc độ cao)</option>
+              <option value="192">192 (Cân bằng)</option>
+              <option value="128">128 (An toàn)</option>
+              <option value="64">64 (Tiết kiệm VRAM)</option>
+            </select>
+          </div>
+          <div style="display:flex; gap:0.5rem; margin-top:0.5rem;">
+            <button class="btn btn-primary" id="btnStartVideo" onclick="startVideoUpscaling()" style="flex:1;" data-i18n="btn_video_start">▶ Nâng cấp Video</button>
+            <button class="btn btn-warning" id="btnPauseVideo" onclick="pauseActiveVideo()" style="display:none;" data-i18n="btn_video_pause">⏸ Tạm dừng</button>
+            <button class="btn btn-primary" id="btnResumeVideo" onclick="resumeActiveVideo()" style="display:none;" data-i18n="btn_video_resume">▶ Tiếp tục</button>
+            <button class="btn btn-danger" id="btnCancelVideo" onclick="cancelActiveVideo()" style="display:none;" data-i18n="btn_video_cancel">⏹ Hủy</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Right Column: Active Video Monitor & Player & History -->
+    <div style="display:flex; flex-direction:column; gap:1.2rem;">
+      <!-- Active Progress Box -->
+      <div class="video-card" id="videoProgressCard" style="display:none;">
+        <div class="video-card-title">
+          <span>⚙️</span>
+          <span id="videoProgressTitle">Tiến độ nâng cấp Video</span>
+          <span class="badge" id="videoProgressBadge" style="margin-left:auto;">PROCESSING</span>
+        </div>
+
+        <!-- Stage Stepper -->
+        <div class="stage-stepper" id="videoStageStepper">
+          <span class="stage-pill" id="stageAnalyzing">1. Phân tích</span>
+          <span class="stage-pill" id="stageExtracting">2. Trích xuất frames</span>
+          <span class="stage-pill" id="stageProcessing">3. Nâng cấp AI</span>
+          <span class="stage-pill" id="stageReconstructing">4. Tái tạo video</span>
+          <span class="stage-pill" id="stageRestoringAudio">5. Đồng bộ âm thanh</span>
+          <span class="stage-pill" id="stageVerifying">6. Xác thực</span>
+        </div>
+
+        <!-- Frame Progress Bar -->
+        <div class="file-progress" style="height:8px; margin-top:0.5rem;">
+          <div class="file-progress-bar" id="videoProgressBar" style="width:0%;"></div>
+        </div>
+
+        <div style="display:flex; justify-content:space-between; font-size:0.82rem; color:var(--text-secondary); margin-top:0.2rem;">
+          <span id="videoProgressFrames">Khung hình: 0 / 0</span>
+          <span id="videoProgressPct" style="font-weight:700; color:var(--accent);">0%</span>
+        </div>
+
+        <div style="display:flex; justify-content:space-between; font-size:0.8rem; color:var(--text-muted); background:var(--bg-input); padding:0.5rem 0.8rem; border-radius:var(--radius-sm);">
+          <span id="videoProgressSpeed">Tốc độ: 0.0 fps</span>
+          <span id="videoProgressEta">Ước tính còn: --:--</span>
+          <span id="videoProgressTile">Tile: Auto</span>
+        </div>
+      </div>
+
+      <!-- Completed Video Preview Player Card -->
+      <div class="video-card" id="videoPlayerCard" style="display:none;">
+        <div class="video-card-title">
+          <span>🎉</span>
+          <span>Xem trước Video kết quả (4X)</span>
+        </div>
+        <div class="video-player-wrap">
+          <video id="videoPlayer" controls preload="metadata"></video>
+        </div>
+        <div style="display:flex; gap:0.6rem; flex-wrap:wrap;">
+          <a class="btn btn-primary" id="btnDownloadVideo" href="#" download data-i18n="btn_download_video">📥 Tải Video kết quả</a>
+          <button class="btn btn-secondary" onclick="exportVideoReport('csv')" data-i18n="btn_video_report_csv">📊 Báo cáo CSV</button>
+          <button class="btn btn-secondary" onclick="exportVideoReport('html')" data-i18n="btn_video_report_html">📊 Báo cáo HTML</button>
+        </div>
+      </div>
+
+      <!-- Video Queue / History Card -->
+      <div class="video-card">
+        <div class="video-card-title">
+          <span>📑</span>
+          <span>Danh sách Video đã xử lý</span>
+          <button class="btn btn-secondary btn-sm" onclick="loadVideoJobs()" style="margin-left:auto;">🔄 Làm mới</button>
+        </div>
+        <div style="overflow-x:auto;">
+          <table class="video-jobs-table">
+            <thead>
+              <tr>
+                <th>Video</th>
+                <th>Độ phân giải</th>
+                <th>Frames</th>
+                <th>Thời gian</th>
+                <th>Trạng thái</th>
+                <th>Hành động</th>
+              </tr>
+            </thead>
+            <tbody id="videoJobsBody">
+              <tr><td colspan="6" style="text-align:center; color:var(--text-muted); padding:1rem;">Chưa có video nào. Kéo thả video để nâng cấp.</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="statusbar">
+  <span id="statusMessage" data-i18n="status_ready">Sẵn sàng</span>
+  <div style="display:flex;align-items:center;">
+    <div class="statusbar-progress">
+      <div class="statusbar-progress-bar" id="overallProgress"></div>
+    </div>
+    <span id="progressText"></span>
+  </div>
+</div>
+
+<!-- ═══════════════ Folder Browser Modal ═══════════════ -->
+<div class="modal-overlay" id="folderModal">
+  <div class="modal">
+    <div class="modal-header">
+      <span data-i18n="modal_browse_title">📁 Duyệt thư mục</span>
+      <button class="btn btn-secondary btn-sm" onclick="closeFolderBrowser()">✕</button>
+    </div>
+    <div class="modal-path">
+      <button class="btn btn-secondary btn-sm" id="folderUp" onclick="folderGoUp()">⬆ Lên</button>
+      <span id="folderCurrentPath">My Computer</span>
+    </div>
+    <div class="modal-body" id="folderList"></div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeFolderBrowser()" data-i18n="btn_cancel_modal">Hủy</button>
+      <button class="btn btn-primary" id="folderSelectBtn" onclick="selectFolder()" data-i18n="btn_select_this_folder">Chọn thư mục này</button>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════ Path Details Modal ═══════════════ -->
+<div class="modal-overlay" id="pathModal">
+  <div class="modal" style="width: 520px;">
+    <div class="modal-header">
+      <span id="pathModalTitle">📁 Chi tiết đường dẫn thư mục</span>
+      <button class="btn btn-secondary btn-sm" onclick="closeModal('pathModal')">✕</button>
+    </div>
+    <div class="modal-body" style="word-break: break-all; font-family: monospace; font-size: 0.85rem; color: var(--accent); padding: 1.2rem;" id="pathModalContent">
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeModal('pathModal')">Đóng</button>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════ Quick Preview Modal ═══════════════ -->
+<div class="modal-overlay" id="previewModal">
+  <div class="modal" style="width: 720px; max-width: 95vw; max-height: 85vh;">
+    <div class="modal-header">
+      <span data-i18n="preview_modal_title">⚡ Quick Preview (Real-ESRGAN x4plus — Patch 256x256)</span>
+      <button class="btn btn-secondary btn-sm" onclick="closePreviewModal()">✕</button>
+    </div>
+    <div class="modal-body" style="padding: 1.2rem;">
+      <div id="previewLoading" style="text-align:center; padding:2rem; display:none;">
+        <div style="font-size:2rem; margin-bottom:0.8rem;">⚙️</div>
+        <div style="font-weight:600;" data-i18n="preview_running">Đang chạy suy luận Real-ESRGAN x4plus trên GPU...</div>
+        <div style="font-size:0.82rem; color:var(--text-secondary); margin-top:0.3rem;">Persistent In-Memory AI Worker</div>
+      </div>
+      <div id="previewContent" style="display:none;">
+        <div style="display:flex; gap:1.2rem; justify-content:center; flex-wrap:wrap;">
+          <div style="flex:1; min-width:260px; text-align:center;">
+            <div style="font-size:0.85rem; font-weight:600; margin-bottom:0.5rem; color:var(--text-secondary);" data-i18n="preview_orig_label">GỐC (Patch 256×256)</div>
+            <div style="background:var(--bg-primary); border:1px solid var(--border); border-radius:var(--radius-sm); height:280px; display:flex; align-items:center; justify-content:center; overflow:hidden;">
+              <img id="prevImgOrig" src="" alt="Original Crop" style="max-width:100%; max-height:100%; object-fit:contain;">
+            </div>
+          </div>
+          <div style="flex:1; min-width:260px; text-align:center;">
+            <div style="font-size:0.85rem; font-weight:600; margin-bottom:0.5rem; color:var(--accent);" data-i18n="preview_enh_label">KẾT QUẢ AI (1024×1024 - 4X)</div>
+            <div style="background:var(--bg-primary); border:1px solid var(--border); border-radius:var(--radius-sm); height:280px; display:flex; align-items:center; justify-content:center; overflow:hidden;">
+              <img id="prevImgEnh" src="" alt="Enhanced Patch" style="max-width:100%; max-height:100%; object-fit:contain;">
+            </div>
+          </div>
+        </div>
+        <div style="margin-top:1rem; background:var(--bg-input); padding:0.6rem 1rem; border-radius:var(--radius-sm); font-size:0.8rem; display:flex; justify-content:space-between; flex-wrap:wrap; gap:0.5rem;">
+          <span id="prevMetaCoord">Vị trí crop: Center</span>
+          <span id="prevMetaTime">Thời gian AI: -</span>
+          <span id="prevMetaRes">Độ phân giải: 1024x1024</span>
+        </div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closePreviewModal()" data-i18n="btn_close">Đóng</button>
+      <button class="btn btn-primary" id="btnPreviewProcessSingle" onclick="processFromPreview()" data-i18n="preview_btn_process">▶ Nâng cấp toàn bộ ảnh này</button>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════ Per-Job Log Modal ═══════════════ -->
+<div class="modal-overlay" id="modalLog">
+  <div class="modal" style="width: 760px; max-width: 95vw; max-height: 85vh;">
+    <div class="modal-header">
+      <span id="logModalTitle">📋 Nhật ký xử lý Job</span>
+      <button class="btn btn-secondary btn-sm" onclick="closeLogModal()">✕</button>
+    </div>
+    <div class="modal-body" style="background: #090a10; padding: 1rem; font-family: monospace; font-size: 0.82rem; white-space: pre-wrap; overflow-y: auto; color: #a6accd; max-height: 60vh;" id="logModalContent">
+      Đang tải log...
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary btn-sm" onclick="refreshCurrentLog()" data-i18n="btn_refresh_log">🔄 Làm mới</button>
+      <button class="btn btn-secondary btn-sm" onclick="closeLogModal()" data-i18n="btn_close">Đóng</button>
+    </div>
+  </div>
+</div>
+
+<!-- Toasts -->
+<div class="toast-container" id="toastContainer"></div>
+
+<script>
+/* ═══════════════════════════════════════════════════════════════ */
+/* I18N Localization Dictionary (Vietnamese & English)            */
+/* ═══════════════════════════════════════════════════════════════ */
+const I18N = {
+  vi: {
+    app_title: "AI Image Studio",
+    version_badge: "v2.0 Turbo",
+    gpu_ready: "GPU sẵn sàng",
+    model_missing: "Thiếu model",
+    cuda_unavailable: "Không có CUDA",
+    offline: "Ngoại tuyến",
+    folder_input: "Thư mục đầu vào:",
+    folder_output: "Thư mục xuất:",
+    browse: "Duyệt",
+    refresh: "🔄",
+    open_output: "📁 Mở thư mục xuất",
+    open_output_success: "Đã mở thư mục xuất trong Windows Explorer",
+    tile_label: "Tile:",
+    tile_auto: "Auto (Khuyến nghị)",
+    tile_speed: "256 (Tốc độ cao)",
+    tile_balanced: "192 (Cân bằng)",
+    tile_safe: "128 (An toàn)",
+    tile_vram_save: "64 (Tiết kiệm VRAM)",
+    tile_min: "32 (Tối thiểu)",
+    tile_no: "0 (Không chia Tile)",
+    format_label: "Định dạng:",
+    format_auto: "Auto (Giữ nguyên)",
+    format_webp: "WEBP (Tối ưu web)",
+    format_png: "PNG (Lossless)",
+    format_jpg: "JPG (Nhỏ gọn)",
+    quality_label: "Chất lượng:",
+    btn_start: "▶ Bắt đầu nâng cấp",
+    btn_cancel: "⏹ Hủy",
+    add_images_title: "Thêm ảnh xử lý",
+    btn_choose_images: "Chọn tệp ảnh",
+    btn_choose_folder: "Chọn thư mục",
+    drop_title: "Kéo & Thả ảnh hoặc Thư mục",
+    drop_text: "Hỗ trợ nhiều tệp & quét thư mục con. Tự động lưu vào uploads",
+    queue_stats_title: "Thống kê hàng đợi",
+    total_files: "Tổng số ảnh:",
+    pending_files: "Đang chờ:",
+    processing_stat: "Đang xử lý:",
+    completed_files: "Hoàn thành:",
+    error_files: "Thất bại:",
+    progress_stat: "Tiến độ:",
+    btn_retry_failed: "🔄 Thử lại lỗi",
+    btn_clear: "✕ Xóa danh sách",
+    queue_title: "📋 Danh sách xử lý",
+    search_placeholder: "Tìm theo tên / ID...",
+    filter_all: "Tất cả trạng thái",
+    filter_queued: "Chờ xử lý",
+    filter_processing: "Đang xử lý",
+    filter_completed: "Đã hoàn thành",
+    filter_failed: "Thất bại",
+    filter_cancelled: "Đã hủy",
+    sort_name_asc: "Tên (A-Z)",
+    sort_name_desc: "Tên (Z-A)",
+    sort_size_asc: "Dung lượng (Tăng)",
+    sort_size_desc: "Dung lượng (Giảm)",
+    sort_time: "Thời gian thêm",
+    sort_duration: "Thời gian xử lý",
+    btn_select_all: "Chọn tất cả",
+    btn_export_zip: "📦 Xuất ZIP ▾",
+    btn_export_report: "📊 Báo cáo ▾",
+    export_zip_all: "📦 Xuất tất cả hoàn thành (ZIP)",
+    export_zip_selected: "📦 Xuất các mục đã chọn (ZIP)",
+    export_csv: "📊 Xuất CSV (Excel UTF-8)",
+    export_html: "📊 Xuất Báo cáo HTML offline",
+    export_csv_selected: "📊 Xuất CSV mục đã chọn",
+    export_html_selected: "📊 Xuất HTML mục đã chọn",
+    recovery_msg: "Đã khôi phục các công việc bị gián đoạn từ phiên trước.",
+    status_ready: "Sẵn sàng",
+    status_pending: "⏳ Chờ xử lý",
+    status_validating: "🔍 Đang kiểm tra",
+    status_processing: "⚙️ Đang xử lý",
+    status_retry: "🔄 Chờ thử lại",
+    status_completed: "✅ Hoàn thành",
+    status_error: "❌ Thất bại",
+    status_cancelled: "🚫 Đã hủy",
+    status_cancel_requested: "⏳ Đang hủy...",
+    modal_browse_title: "📁 Duyệt thư mục",
+    btn_cancel_modal: "Hủy",
+    btn_select_this_folder: "Chọn thư mục này",
+    btn_close: "Đóng",
+    btn_refresh_log: "🔄 Làm mới",
+    empty_queue_title: "Chưa có ảnh trong hàng đợi",
+    empty_queue_desc: "Chọn ảnh đơn lẻ, nhiều ảnh hoặc cả thư mục để bắt đầu nâng cấp độ phân giải 4X với Real-ESRGAN.",
+    empty_queue_tip: "💡 Mẹo: Bạn có thể chọn nhiều ảnh nhiều lần từ nhiều thư mục khác nhau.",
+    empty_queue_text: "Chưa có ảnh trong hàng đợi. Chọn ảnh hoặc thư mục để bắt đầu.",
+    batch_feedback_summary: "Đã nạp {valid} ảnh hợp lệ ({duplicates} trùng lặp, {too_large} quá lớn, {corrupt} lỗi, {unsupported} không hỗ trợ).",
+    btn_reprocess: "🔁 Xử lý lại",
+    tab_image_upscale: "🖼️ Nâng cấp Ảnh",
+    tab_video_upscale: "🎬 Nâng cấp Video",
+    video_drop_title: "Kéo & Thả Video vào đây",
+    video_drop_text: "Hỗ trợ MP4, MKV, MOV, AVI, WEBM. Xử lý khung hình với RealESRGAN_x4plus",
+    video_meta_title: "Thông tin Video",
+    video_filename: "Tệp video:",
+    video_resolution: "Độ phân giải:",
+    video_target_res: "Độ phân giải 4X:",
+    video_fps: "Tốc độ khung hình:",
+    video_duration: "Thời lượng:",
+    video_total_frames: "Tổng khung hình:",
+    video_audio: "Âm thanh:",
+    video_storage_req: "Dung lượng tạm:",
+    video_disk_free: "Ổ đĩa còn trống:",
+    video_quality: "Chất lượng:",
+    quality_balanced: "Cân bằng (CRF 22)",
+    quality_high: "Chất lượng cao (CRF 18)",
+    quality_fast: "Tốc độ cao (CRF 26)",
+    btn_video_start: "▶ Bắt đầu nâng cấp Video",
+    btn_video_pause: "⏸ Tạm dừng",
+    btn_video_resume: "▶ Tiếp tục",
+    btn_video_cancel: "⏹ Hủy",
+    btn_download_video: "📥 Tải Video kết quả",
+    btn_video_report_csv: "📊 Báo cáo CSV",
+    btn_video_report_html: "📊 Báo cáo HTML",
+    btn_choose_input_folder: "📁 Chọn thư mục ảnh",
+    btn_change_folder: "🔄 Đổi thư mục",
+    btn_reset_folder: "↺ uploads",
+    folder_empty_warning: "Thư mục không có ảnh hợp lệ hoặc định dạng không được hỗ trợ (JPG, PNG, WebP, BMP).",
+    folder_loaded_success: "Đã tìm thấy {count} ảnh hợp lệ từ thư mục.",
+    folder_dialog_opening: "Đang mở hộp thoại...",
+    folder_scanning: "Đang quét ảnh trong thư mục...",
+    folder_cancelled: "Đã đóng hoặc hủy hộp thoại chọn thư mục.",
+    remote_browse_warning: "Hộp thoại Windows native chỉ mở trên máy chủ local. Vui lòng kéo/thả hoặc tải ảnh lên.",
+    output_folder_updated: "Đã cập nhật thư mục xuất.",
+    images_count_suffix: "ảnh",
+    source_upload: "Tệp ảnh",
+    source_folder: "Thư mục",
+    clear_confirm: "Bạn có chắc chắn muốn xóa tất cả ảnh khỏi danh sách?"
+  },
+  en: {
+    app_title: "AI Image Studio",
+    version_badge: "v2.0 Turbo",
+    gpu_ready: "GPU Ready",
+    model_missing: "Model missing",
+    cuda_unavailable: "CUDA unavailable",
+    offline: "Offline",
+    folder_input: "Input Folder:",
+    folder_output: "Output Folder:",
+    browse: "Browse",
+    refresh: "🔄",
+    open_output: "📁 Open Output",
+    open_output_success: "Opened output folder in Windows Explorer",
+    tile_label: "Tile:",
+    tile_auto: "Auto (Recommended)",
+    tile_speed: "256 (High Speed)",
+    tile_balanced: "192 (Balanced)",
+    tile_safe: "128 (Safe)",
+    tile_vram_save: "64 (VRAM Saving)",
+    tile_min: "32 (Minimum)",
+    tile_no: "0 (No Tile)",
+    format_label: "Format:",
+    format_auto: "Auto (Preserve)",
+    format_webp: "WEBP (Web optimized)",
+    format_png: "PNG (Lossless)",
+    format_jpg: "JPG (Compact)",
+    quality_label: "Quality:",
+    btn_start: "▶ Start Upscaling",
+    btn_cancel: "⏹ Cancel",
+    add_images_title: "Add Images",
+    btn_choose_images: "Choose Images",
+    btn_choose_folder: "Choose Folder",
+    drop_title: "Drag & Drop Images or Folders",
+    drop_text: "Supports multi-images & recursive folders. Automatically saved to uploads",
+    queue_stats_title: "Queue Overview",
+    total_files: "Total Files:",
+    pending_files: "Pending:",
+    processing_stat: "Processing:",
+    completed_files: "Completed:",
+    error_files: "Errors:",
+    progress_stat: "Progress:",
+    btn_retry_failed: "🔄 Retry Failed",
+    btn_clear: "✕ Clear List",
+    queue_title: "📋 Image Queue",
+    search_placeholder: "Search by name / ID...",
+    filter_all: "All Statuses",
+    filter_queued: "Queued",
+    filter_processing: "Processing",
+    filter_completed: "Completed",
+    filter_failed: "Failed",
+    filter_cancelled: "Cancelled",
+    sort_name_asc: "Name (A-Z)",
+    sort_name_desc: "Name (Z-A)",
+    sort_size_asc: "Size (Asc)",
+    sort_size_desc: "Size (Desc)",
+    sort_time: "Time Added",
+    sort_duration: "Processing Time",
+    btn_select_all: "Select All",
+    btn_export_zip: "📦 Export ZIP ▾",
+    btn_export_report: "📊 Report ▾",
+    export_zip_all: "📦 Export All Completed (ZIP)",
+    export_zip_selected: "📦 Export Selected (ZIP)",
+    export_csv: "📊 Export CSV (Excel UTF-8)",
+    export_html: "📊 Export Offline HTML Report",
+    export_csv_selected: "📊 Export Selected to CSV",
+    export_html_selected: "📊 Export Selected to HTML",
+    recovery_msg: "Recovered interrupted jobs from previous session.",
+    status_ready: "Ready",
+    status_pending: "⏳ Queued",
+    status_validating: "🔍 Validating",
+    status_processing: "⚙️ Processing",
+    status_retry: "🔄 Retrying",
+    status_completed: "✅ Completed",
+    status_error: "❌ Failed",
+    status_cancelled: "🚫 Cancelled",
+    status_cancel_requested: "⏳ Cancelling...",
+    modal_browse_title: "📁 Browse Folder",
+    btn_cancel_modal: "Cancel",
+    btn_select_this_folder: "Select This Folder",
+    btn_close: "Close",
+    btn_refresh_log: "🔄 Refresh",
+    empty_queue_title: "Queue is Empty",
+    empty_queue_desc: "Choose individual images, multiple files or an entire folder to start 4X enhancement.",
+    empty_queue_tip: "💡 Tip: You can repeatedly add images from different directories.",
+    empty_queue_text: "No images in queue. Choose images or folder to begin.",
+    batch_feedback_summary: "Loaded {valid} valid images ({duplicates} duplicates, {too_large} too large, {corrupt} corrupt, {unsupported} unsupported).",
+    btn_reprocess: "🔁 Reprocess",
+    tab_image_upscale: "🖼️ Image Upscale",
+    tab_video_upscale: "🎬 Video Upscale",
+    video_drop_title: "Drag & Drop Video here",
+    video_drop_text: "Supports MP4, MKV, MOV, AVI, WEBM. Frame upscaling with RealESRGAN_x4plus",
+    video_meta_title: "Video Information",
+    video_filename: "Video File:",
+    video_resolution: "Resolution:",
+    video_target_res: "4X Target Res:",
+    video_fps: "Frame Rate:",
+    video_duration: "Duration:",
+    video_total_frames: "Total Frames:",
+    video_audio: "Audio:",
+    video_storage_req: "Temp Storage:",
+    video_disk_free: "Free Disk Space:",
+    video_quality: "Quality:",
+    quality_balanced: "Balanced (CRF 22)",
+    quality_high: "High Quality (CRF 18)",
+    quality_fast: "Fast / Smaller (CRF 26)",
+    btn_video_start: "▶ Start Video Upscaling",
+    btn_video_pause: "⏸ Pause",
+    btn_video_resume: "▶ Resume",
+    btn_video_cancel: "⏹ Cancel",
+    btn_download_video: "📥 Download Enhanced Video",
+    btn_video_report_csv: "📊 CSV Report",
+    btn_video_report_html: "📊 HTML Report",
+    btn_choose_input_folder: "📁 Choose Image Folder",
+    btn_change_folder: "🔄 Change Folder",
+    btn_reset_folder: "↺ uploads",
+    folder_empty_warning: "Selected folder is empty or has no supported images (JPG, PNG, WebP, BMP).",
+    folder_loaded_success: "Loaded {count} valid image(s) from folder.",
+    folder_dialog_opening: "Opening dialog...",
+    folder_scanning: "Scanning folder for images...",
+    folder_cancelled: "Folder selection dialog closed or cancelled.",
+    remote_browse_warning: "Windows folder dialog only opens on the local host machine. Please upload or drag & drop files instead.",
+    output_folder_updated: "Output folder updated.",
+    images_count_suffix: "images",
+    source_upload: "Image File",
+    source_folder: "Folder",
+    clear_confirm: "Are you sure you want to clear all images from the list?"
+  }
+};
+
+/* ═══════════════════════════════════════════════════════════════ */
+/* Application State                                              */
+/* ═══════════════════════════════════════════════════════════════ */
+const fileQueue = new Map(); // job_id -> file data
+const selectedJobIds = new Set();
+let isProcessing = false;
+let evtSource = null;
+let currentInputFolder = '';
+let currentOutputFolder = '';
+let folderBrowserMode = ''; // 'input' or 'output'
+let folderBrowserPath = '';
+let currentQueuePage = 1;
+const queuePageSize = 48;
+
+// Preferences from localStorage with fallbacks
+let currentLang = localStorage.getItem('ais_language') || 'vi';
+let currentViewMode = localStorage.getItem('ais_view_mode') || 'grid';
+
+function t(key, params = {}) {
+  const dict = I18N[currentLang] || I18N.vi;
+  let str = dict[key] || (I18N.en && I18N.en[key]) || key;
+  for (const [k, v] of Object.entries(params)) {
+    str = str.split(' + k + ').join(v);
+  }
+  return str;
+}
+
+function setLanguage(lang) {
+  if (!['vi', 'en'].includes(lang)) lang = 'vi';
+  currentLang = lang;
+  localStorage.setItem('ais_language', lang);
+  document.documentElement.lang = lang;
+
+  document.getElementById('btnLangVi').classList.toggle('active', lang === 'vi');
+  document.getElementById('btnLangEn').classList.toggle('active', lang === 'en');
+
+  document.querySelectorAll('[data-i18n]').forEach(el => {
+    const key = el.getAttribute('data-i18n');
+    if (I18N[lang] && I18N[lang][key]) {
+      el.textContent = I18N[lang][key];
+    }
+  });
+
+  document.querySelectorAll('[data-i18n-ph]').forEach(el => {
+    const key = el.getAttribute('data-i18n-ph');
+    if (I18N[lang] && I18N[lang][key]) {
+      el.placeholder = I18N[lang][key];
+    }
+  });
+
+  renderFileList();
+  updateQueueInfo();
+}
+
+function setViewMode(mode) {
+  currentViewMode = mode;
+  localStorage.setItem('ais_view_mode', mode);
+  const listEl = document.getElementById('fileList');
+  if (listEl) {
+    listEl.className = 'file-list view-' + mode;
+  }
+  document.getElementById('btnViewGrid').classList.toggle('active', mode === 'grid');
+  document.getElementById('btnViewList').classList.toggle('active', mode === 'list');
+  renderFileList();
+}
+
+function toggleTheme() {
+  const cur = document.documentElement.getAttribute('data-theme') || 'dark';
+  const next = cur === 'dark' ? 'light' : 'dark';
+  document.documentElement.setAttribute('data-theme', next);
+  localStorage.setItem('ais_theme', next);
+  document.getElementById('themeToggle').textContent = next === 'dark' ? '🌙' : '☀️';
+}
+
+function toggleDropdown(id) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  const isShown = el.classList.contains('show');
+  document.querySelectorAll('.batch-dropdown-menu').forEach(m => m.classList.remove('show'));
+  if (!isShown) el.classList.add('show');
+}
+
+window.addEventListener('click', (e) => {
+  if (!e.target.closest('.batch-dropdown')) {
+    document.querySelectorAll('.batch-dropdown-menu').forEach(m => m.classList.remove('show'));
+  }
+});
+
+function toggleQualitySlider() {
+  const fmt = document.getElementById('exportFormat').value;
+  const grp = document.getElementById('qualityGroup');
+  if (grp) {
+    grp.style.display = (fmt === 'jpg' || fmt === 'webp') ? 'flex' : 'none';
+  }
+}
+
+function toast(msg, type = 'info') {
+  const c = document.getElementById('toastContainer');
+  if (!c) return;
+  const tDiv = document.createElement('div');
+  tDiv.className = 'toast ' + type;
+  const icon = type === 'success' ? '✓' : (type === 'error' ? '✕' : (type === 'warning' ? '⚠' : 'ℹ'));
+  tDiv.innerHTML = `<span style="font-weight:700;">${icon}</span> <span>${msg}</span>`;
+  c.appendChild(tDiv);
+  setTimeout(() => {
+    tDiv.style.opacity = '0';
+    tDiv.style.transition = 'opacity 0.3s ease';
+    setTimeout(() => tDiv.remove(), 300);
+  }, 3500);
+}
+
+function escHtml(str) {
+  if (!str) return '';
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+function formatSize(bytes) {
+  if (!bytes || bytes === 0) return '0 B';
+  const k = 1024;
+  const sizes = ['B', 'KB', 'MB', 'GB'];
+  const i = Math.floor(Math.log(bytes) / Math.log(k));
+  return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
+}
+
+function shortenPath(p, maxLen = 32) {
+  if (!p) return '';
+  if (p.length <= maxLen) return p;
+  const parts = p.replace(/\\/g, '/').split('/');
+  if (parts.length <= 2) return p.substring(0, maxLen - 3) + '...';
+  const first = parts[0];
+  const last = parts[parts.length - 1];
+  const secondLast = parts[parts.length - 2];
+  const shortened = `${first}/.../${secondLast}/${last}`;
+  if (shortened.length <= maxLen) return shortened;
+  return `.../${last}`;
+}
+
+function showPathDetails(type) {
+  const fullPath = type === 'input' ? (currentInputFolder || 'uploads') : (currentOutputFolder || 'output');
+  const title = type === 'input' ? t('folder_input') : t('folder_output');
+  document.getElementById('pathModalTitle').textContent = `📁 ${title}`;
+  document.getElementById('pathModalContent').textContent = fullPath;
+  document.getElementById('pathModal').classList.add('show');
+}
+
+function closeModal(id) {
+  const el = document.getElementById(id);
+  if (el) el.classList.remove('show');
+}
+
+/* ═══════════════════════════════════════════════════════════════ */
+/* System Status & GPU Monitoring                                 */
+/* ═══════════════════════════════════════════════════════════════ */
+async function checkStatus() {
+  try {
+    const r = await fetch('/api/status');
+    const d = await r.json();
+    const dot = document.getElementById('statusDot');
+    if (dot) {
+      if (d.model_ok && d.cuda_ok) {
+        dot.classList.add('ok');
+        dot.title = d.gpu_name || t('gpu_ready');
+      } else {
+        dot.classList.remove('ok');
+        dot.title = !d.model_ok ? t('model_missing') : t('cuda_unavailable');
+      }
+    }
+
+    if (d.recovery && d.recovery.recovered_count > 0) {
+      const banner = document.getElementById('recoveryBanner');
+      const bannerTxt = document.getElementById('recoveryBannerText');
+      if (banner && bannerTxt) {
+        bannerTxt.textContent = `${t('recovery_msg')} (${d.recovery.recovered_count})`;
+        banner.style.display = 'flex';
+      }
+    }
+  } catch(e) {
+    const dot = document.getElementById('statusDot');
+    if (dot) {
+      dot.classList.remove('ok');
+      dot.title = t('offline');
+    }
+  }
+}
+
+async function updateGpuStats() {
+  try {
+    const r = await fetch('/api/gpu-stats');
+    if (!r.ok) return;
+    const d = await r.json();
+
+    if (d.gpu && d.gpu.gpu_name) {
+      // Keep chip name clean and concise
+      let chipName = d.gpu.gpu_name.replace('NVIDIA ', '').replace('GeForce ', '');
+      document.getElementById('gpuName').textContent = chipName || 'RTX 2050';
+    }
+
+    if (d.gpu && d.gpu.total_gb > 0) {
+      const usedPct = d.gpu.used_pct || Math.round((d.gpu.used_gb / d.gpu.total_gb) * 100);
+      document.getElementById('vramFill').style.width = usedPct + '%';
+      document.getElementById('vramText').textContent = `${d.gpu.used_gb}/${d.gpu.total_gb} GB (${usedPct}%)`;
+    }
+
+    const badge = document.getElementById('workerBadge');
+    if (badge && d.state) {
+      badge.textContent = d.state;
+      badge.className = 'worker-badge worker-' + d.state;
+    }
+  } catch(e) {}
+}
+
+async function initDefaultDirectories() {
+  try {
+    const rOut = await fetch('/api/default-output-dir');
+    const dOut = await rOut.json();
+    currentOutputFolder = dOut.output_dir || '';
+    const outInput = document.getElementById('outputFolder');
+    if (outInput) {
+      outInput.value = shortenPath(currentOutputFolder);
+      outInput.title = currentOutputFolder;
+    }
+  } catch(e) {}
+
+  try {
+    const rIn = await fetch('/api/default-input-dir');
+    const dIn = await rIn.json();
+    if (!currentInputFolder) {
+      currentInputFolder = dIn.input_dir || '';
+      const inInput = document.getElementById('inputFolder');
+      if (inInput) {
+        inInput.value = shortenPath(currentInputFolder || 'uploads');
+        inInput.title = currentInputFolder || 'uploads';
+      }
+    }
+  } catch(e) {}
+}
+
+/* ═══════════════════════════════════════════════════════════════ */
+/* Drag & Drop Integration                                         */
+/* ═══════════════════════════════════════════════════════════════ */
+function setupDragDrop() {
+  const dz = document.getElementById('dropzone');
+  if (!dz) return;
+
+  ['dragenter', 'dragover'].forEach(evt => {
+    dz.addEventListener(evt, (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      dz.classList.add('dragover');
+    });
+  });
+  ['dragleave', 'drop'].forEach(evt => {
+    dz.addEventListener(evt, (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      dz.classList.remove('dragover');
+    });
+  });
+
+  dz.addEventListener('drop', async (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    dz.classList.remove('dragover');
+
+    const items = e.dataTransfer.items;
+    const filesToUpload = [];
+
+    if (items && items.length > 0 && items[0].webkitGetAsEntry) {
+      const entries = [];
+      for (let i = 0; i < items.length; i++) {
+        const entry = items[i].webkitGetAsEntry();
+        if (entry) entries.push(entry);
+      }
+      for (const entry of entries) {
+        const found = await scanEntryRecursive(entry);
+        filesToUpload.push(...found);
+      }
+    } else {
+      for (let i = 0; i < e.dataTransfer.files.length; i++) {
+        filesToUpload.push(e.dataTransfer.files[i]);
+      }
+    }
+
+    const validImages = filesToUpload.filter(f => {
+      if (!f || !f.name) return false;
+      const ext = f.name.split('.').pop().toLowerCase();
+      return ['jpg', 'jpeg', 'png', 'webp', 'bmp'].includes(ext);
+    });
+
+    if (validImages.length > 0) {
+      await uploadFilesBatched(validImages);
+    } else {
+      toast(t('empty_queue_text'), 'warning');
+    }
+  });
+
+  // Support drop onto right workspace when empty
+  const rightPanel = document.querySelector('.panel-right');
+  if (rightPanel) {
+    rightPanel.addEventListener('dragover', (e) => { e.preventDefault(); });
+    rightPanel.addEventListener('drop', async (e) => {
+      if (e.target.closest('#dropzone')) return;
+      e.preventDefault();
+      const files = Array.from(e.dataTransfer.files).filter(f => {
+        if (!f || !f.name) return false;
+        const ext = f.name.split('.').pop().toLowerCase();
+        return ['jpg', 'jpeg', 'png', 'webp', 'bmp'].includes(ext);
+      });
+      if (files.length > 0) {
+        await uploadFilesBatched(files);
+      }
+    });
+  }
+}
+
+async function scanEntryRecursive(entry) {
+  const results = [];
+  if (entry.isFile) {
+    const file = await new Promise((resolve) => entry.file(resolve, () => resolve(null)));
+    if (file) results.push(file);
+  } else if (entry.isDirectory) {
+    const dirReader = entry.createReader();
+    const readEntries = async () => {
+      return new Promise((resolve) => {
+        dirReader.readEntries((entries) => resolve(entries), () => resolve([]));
+      });
+    };
+    let entries = await readEntries();
+    while (entries.length > 0) {
+      for (const child of entries) {
+        const sub = await scanEntryRecursive(child);
+        results.push(...sub);
+      }
+      entries = await readEntries();
+    }
+  }
+  return results;
+}
+
+/* ═══════════════════════════════════════════════════════════════ */
+/* Image Selection Handler (Action 1: Choose Images)               */
+/* ═══════════════════════════════════════════════════════════════ */
+async function handleImageFileSelect(files) {
+  if (!files || files.length === 0) return;
+  const fileArray = Array.from(files);
+  await uploadFilesBatched(fileArray);
+  document.getElementById('imageFileInput').value = '';
+}
+
+async function uploadFilesBatched(files, chunkSize = 50) {
+  toast(`Uploading ${files.length} file(s)...`, 'info');
+  let validTotal = 0, dupTotal = 0, corruptTotal = 0, unsuppTotal = 0, tooLargeTotal = 0;
+  let uploadErrors = [];
+
+  for (let i = 0; i < files.length; i += chunkSize) {
+    const chunk = files.slice(i, i + chunkSize);
+    const fd = new FormData();
+    chunk.forEach(f => fd.append('files', f));
+
+    try {
+      const r = await fetch('/api/upload', { method: 'POST', body: fd });
+      const d = await r.json();
+      if (d.files && d.files.length > 0) {
+        d.files.forEach(f => {
+          if (!fileQueue.has(f.job_id)) {
+            fileQueue.set(f.job_id, {
+              ...f,
+              source: f.source || 'upload',
+              status: f.status || 'pending',
+              error: null,
+              elapsed: null,
+              is_oom: false
+            });
+          } else {
+            const existing = fileQueue.get(f.job_id);
+            fileQueue.set(f.job_id, { ...existing, ...f });
+          }
+        });
+      }
+      if (d.summary) {
+        validTotal += d.summary.valid || 0;
+        dupTotal += d.summary.duplicates || 0;
+        corruptTotal += d.summary.corrupt || 0;
+        unsuppTotal += d.summary.unsupported || 0;
+        tooLargeTotal += d.summary.too_large || 0;
+      }
+      if (d.errors && d.errors.length > 0) {
+        uploadErrors.push(...d.errors);
+      }
+    } catch(e) {
+      toast('Upload error: ' + e.message, 'error');
+    }
+  }
+
+  const fb = document.getElementById('batchFeedback');
+  const fbTxt = document.getElementById('batchFeedbackText');
+  if (fb && fbTxt) {
+    fbTxt.innerHTML = t('batch_feedback_summary', {
+      valid: `<strong>${validTotal}</strong>`,
+      duplicates: `<strong>${dupTotal}</strong>`,
+      too_large: `<strong>${tooLargeTotal}</strong>`,
+      corrupt: `<strong>${corruptTotal}</strong>`,
+      unsupported: `<strong>${unsuppTotal}</strong>`
+    });
+    fb.style.display = 'block';
+  }
+
+  renderFileList();
+  updateQueueInfo();
+
+  if (validTotal > 0) {
+    let msg = `Đã thêm ${validTotal} ảnh`;
+    if (dupTotal > 0) msg += ` (${dupTotal} trùng lặp bỏ qua)`;
+    toast(msg, 'success');
+  } else if (dupTotal > 0) {
+    toast(`${dupTotal} ảnh trùng lặp đã có trong danh sách.`, 'warning');
+  } else if (corruptTotal > 0) {
+    toast(`${corruptTotal} tệp bị hỏng hoặc không đọc được.`, 'error');
+  } else if (tooLargeTotal > 0) {
+    toast(`${tooLargeTotal} tệp vượt quá kích thước/độ phân giải giới hạn.`, 'warning');
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════════ */
+/* Folder Operations (Action 2: Choose Folder)                     */
+/* ═══════════════════════════════════════════════════════════════ */
+async function loadImagesFromFolder(path, clearPrevious = false) {
+  try {
+    if (clearPrevious) {
+      fileQueue.clear();
+      selectedJobIds.clear();
+      renderFileList();
+      updateQueueInfo();
+    }
+    toast(t('folder_scanning'), 'info');
+    const r = await fetch('/api/select-folder', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ path: path || '' })
+    });
+    const d = await r.json();
+    if (d.error) {
+      toast(d.error, 'error');
+      return;
+    }
+
+    const badge = document.getElementById('folderCountBadge');
+    const alertEmpty = document.getElementById('folderEmptyAlert');
+
+    if (d.files) {
+      d.files.forEach(f => {
+        if (!fileQueue.has(f.job_id)) {
+          fileQueue.set(f.job_id, { ...f, source: 'folder' });
+        } else {
+          const existing = fileQueue.get(f.job_id);
+          fileQueue.set(f.job_id, { ...existing, ...f, source: 'folder' });
+        }
+      });
+      renderFileList();
+      updateQueueInfo();
+
+      const count = d.files.length;
+      if (badge) badge.textContent = `${count} ${t('images_count_suffix') || 'ảnh'}`;
+
+      if (count === 0) {
+        if (alertEmpty) alertEmpty.style.display = 'block';
+        toast(t('folder_empty_warning'), 'warning');
+      } else {
+        if (alertEmpty) alertEmpty.style.display = 'none';
+        toast(t('folder_loaded_success', { count: count }), 'info');
+      }
+    }
+  } catch(e) {
+    toast('Error loading folder: ' + e.message, 'error');
+  }
+}
+
+async function resetToUploads() {
+  currentInputFolder = '';
+  const inInput = document.getElementById('inputFolder');
+  if (inInput) {
+    inInput.value = 'uploads';
+    inInput.title = 'uploads';
+  }
+  document.getElementById('currentFolderLabel').textContent = 'Folder: uploads';
+  const box = document.getElementById('folderStatusBox');
+  if (box) box.style.display = 'none';
+  const resetBtn = document.getElementById('btnResetInputFolder');
+  if (resetBtn) resetBtn.style.display = 'none';
+  toast('Đã chuyển về thư mục mặc định uploads', 'info');
+  await loadImagesFromFolder('', false);
+}
+
+async function refreshCurrentFolder() {
+  const path = currentInputFolder || '';
+  toast('Refreshing folder...', 'info');
+  await loadImagesFromFolder(path, false);
+}
+
+/* ═══════════════════════════════════════════════════════════════ */
+/* Filters, Live Search & Sorting                                 */
+/* ═══════════════════════════════════════════════════════════════ */
+function applyFilters() {
+  currentQueuePage = 1;
+  renderFileList();
+}
+
+function getFilteredAndSortedJobs() {
+  const searchTerm = (document.getElementById('filterSearch').value || '').trim().toLowerCase();
+  const statusFilter = document.getElementById('filterStatus').value;
+  const sortOption = document.getElementById('sortOption').value;
+
+  let jobsArr = Array.from(fileQueue.values());
+
+  if (searchTerm) {
+    jobsArr = jobsArr.filter(j => {
+      const name = (j.filename || '').toLowerCase();
+      const jid = (j.job_id || j.id || '').toLowerCase();
+      return name.includes(searchTerm) || jid.includes(searchTerm);
+    });
+  }
+
+  if (statusFilter !== 'all') {
+    jobsArr = jobsArr.filter(j => {
+      const st = (j.status || '').toLowerCase();
+      if (statusFilter === 'pending') return ['pending', 'queued', 'validating'].includes(st);
+      if (statusFilter === 'processing') return st === 'processing';
+      if (statusFilter === 'completed') return st === 'completed';
+      if (statusFilter === 'error') return ['error', 'failed'].includes(st);
+      if (statusFilter === 'cancelled') return ['cancelled', 'cancel_requested'].includes(st);
+      return st === statusFilter;
+    });
+  }
+
+  jobsArr.sort((a, b) => {
+    if (sortOption === 'name_asc') return (a.filename || '').localeCompare(b.filename || '');
+    if (sortOption === 'name_desc') return (b.filename || '').localeCompare(a.filename || '');
+    if (sortOption === 'size_asc') return (a.file_size || 0) - (b.file_size || 0);
+    if (sortOption === 'size_desc') return (b.file_size || 0) - (a.file_size || 0);
+    if (sortOption === 'duration') return (a.elapsed || 0) - (b.elapsed || 0);
+    return 0;
+  });
+
+  return jobsArr;
+}
+
+/* Batch Selection */
+function toggleSelectAll(checked) {
+  const filtered = getFilteredAndSortedJobs();
+  filtered.forEach(j => {
+    const id = j.job_id || j.id;
+    if (checked) selectedJobIds.add(id);
+    else selectedJobIds.delete(id);
+  });
+  updateSelectionUI();
+  renderFileList();
+}
+
+function toggleJobSelection(id, checked) {
+  if (checked) selectedJobIds.add(id);
+  else selectedJobIds.delete(id);
+  updateSelectionUI();
+}
+
+function updateSelectionUI() {
+  const selCount = document.getElementById('selectedCount');
+  if (selCount) selCount.textContent = selectedJobIds.size;
+  const chkAll = document.getElementById('chkSelectAll');
+  if (chkAll) {
+    const filtered = getFilteredAndSortedJobs();
+    chkAll.checked = filtered.length > 0 && filtered.every(j => selectedJobIds.has(j.job_id || j.id));
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════════ */
+/* File List Rendering & Pagination                                */
+/* ═══════════════════════════════════════════════════════════════ */
+function renderFileList() {
+  const listEl = document.getElementById('fileList');
+  const paginationEl = document.getElementById('queuePagination');
+  if (!listEl) return;
+
+  const filteredJobs = getFilteredAndSortedJobs();
+
+  if (fileQueue.size === 0) {
+    listEl.innerHTML = `
+      <div class="file-list-empty">
+        <div class="empty-queue-container">
+          <div class="empty-queue-icon">🖼️</div>
+          <h3 class="empty-queue-title" data-i18n="empty_queue_title">${t('empty_queue_title')}</h3>
+          <p class="empty-queue-desc" data-i18n="empty_queue_desc">${t('empty_queue_desc')}</p>
+          <div class="empty-queue-actions">
+            <button class="btn btn-primary" onclick="document.getElementById('imageFileInput').click()">
+              <span>🖼️</span> <span data-i18n="btn_choose_images">${t('btn_choose_images')}</span>
+            </button>
+            <button class="btn btn-secondary" id="btnEmptyQueueChooseFolder" onclick="browseFolderNative('input')">
+              <span>📁</span> <span data-i18n="btn_choose_folder">${t('btn_choose_folder')}</span>
+            </button>
+          </div>
+          <div class="empty-queue-tip" data-i18n="empty_queue_tip">${t('empty_queue_tip')}</div>
+        </div>
+      </div>`;
+    if (paginationEl) paginationEl.style.display = 'none';
+    document.getElementById('btnStart').disabled = true;
+    return;
+  }
+
+  if (filteredJobs.length === 0) {
+    listEl.innerHTML = `
+      <div class="file-list-empty">
+        <div class="empty-queue-container" style="padding: 1.5rem;">
+          <div style="font-size: 2.2rem; margin-bottom: 0.5rem;">🔍</div>
+          <h4 style="font-size: 1rem; margin-bottom: 0.3rem;">Không tìm thấy ảnh</h4>
+          <p style="font-size: 0.8rem; color: var(--text-secondary);">Không có ảnh nào phù hợp với bộ lọc hoặc từ khóa tìm kiếm hiện tại.</p>
+        </div>
+      </div>`;
+    if (paginationEl) paginationEl.style.display = 'none';
+    return;
+  }
+
+  const totalItems = filteredJobs.length;
+  const totalPages = Math.ceil(totalItems / queuePageSize) || 1;
+  if (currentQueuePage > totalPages) currentQueuePage = totalPages;
+  if (currentQueuePage < 1) currentQueuePage = 1;
+
+  const startIdx = (currentQueuePage - 1) * queuePageSize;
+  const pageJobs = filteredJobs.slice(startIdx, startIdx + queuePageSize);
+
+  if (paginationEl) {
+    if (totalItems > queuePageSize) {
+      paginationEl.style.display = 'flex';
+      document.getElementById('paginationInfo').textContent = `Trang ${currentQueuePage} / ${totalPages} (Tổng ${totalItems} ảnh)`;
+      document.getElementById('btnPrevPage').disabled = currentQueuePage <= 1;
+      document.getElementById('btnNextPage').disabled = currentQueuePage >= totalPages;
+    } else {
+      paginationEl.style.display = 'none';
+    }
+  }
+
+  listEl.innerHTML = '';
+  pageJobs.forEach(f => {
+    const id = f.job_id || f.id;
+    const isSelected = selectedJobIds.has(id);
+    const item = document.createElement('div');
+    item.className = 'file-item';
+
+    const statusClass = 'status-' + f.status;
+    const statusLabels = {
+      pending: t('status_pending'),
+      queued: t('status_pending'),
+      validating: t('status_validating'),
+      processing: t('status_processing'),
+      retry: `${t('status_retry')} (${f.retry_count || 1}/${f.max_retries || 3})`,
+      retry_wait: `${t('status_retry')} (${f.retry_count || 1}/${f.max_retries || 3})`,
+      completed: t('status_completed'),
+      error: t('status_error'),
+      failed: t('status_error'),
+      cancelled: t('status_cancelled'),
+      cancel_requested: t('status_cancel_requested')
+    };
+    const statusLabel = statusLabels[f.status] || f.status;
+
+    let actionsHtml = `<button title="Log" onclick="openLogModal('${id}')">📋 Log</button>`;
+    if (f.status === 'error' || f.status === 'failed') {
+      actionsHtml += `<button title="Retry" onclick="retryJob('${id}')">🔄 Retry</button>`;
+    }
+    if (f.status === 'completed') {
+      actionsHtml += `<button title="${t('btn_reprocess') || 'Reprocess'}" onclick="reprocessSingleJob('${id}')">🔁</button>`;
+    }
+    if (f.status !== 'processing') {
+      actionsHtml += `<button title="Remove" onclick="removeJob('${id}')">✕</button>`;
+    }
+
+    const ext = (f.filename || '').split('.').pop().toUpperCase();
+    const sourceLabel = f.source === 'folder' ? '📁 ' + t('source_folder') : '🖼️ ' + t('source_upload');
+    const sourceClass = f.source === 'folder' ? 'source-folder' : 'source-upload';
+
+    let dimensionHtml = f.dimensions ? `<span class="file-meta-pill">📐 ${f.dimensions}</span>` : '';
+    if (f.output_dimensions) {
+      dimensionHtml += `<span class="file-meta-pill" style="color:var(--accent);">➜ ${f.output_dimensions} (4×)</span>`;
+    }
+    let elapsedHtml = (f.elapsed != null) ? `<span class="file-meta-pill">⏱ ${f.elapsed}s</span>` : '';
+    let retryBadgeHtml = (f.retry_count && f.retry_count > 0) ? `<span class="file-meta-pill" style="color:var(--warning);">Thử lại ${f.retry_count}/${f.max_retries || 3}</span>` : '';
+
+    const thumbUrl = f.thumbnail_url || `/api/thumbnail/${id}`;
+
+    if (currentViewMode === 'grid') {
+      item.innerHTML = `
+        <div class="card-top">
+          <div class="card-top-badges">
+            <input type="checkbox" class="card-checkbox" data-job-id="${id}" ${isSelected ? 'checked' : ''} onchange="toggleJobSelection('${id}', this.checked)">
+            <span class="status-badge ${statusClass}">${statusLabel}</span>
+          </div>
+          <img class="file-thumb" src="${thumbUrl}" alt="" loading="lazy" onerror="this.src='data:image/svg+xml;utf8,<svg xmlns=\'http://www.w3.org/2000/svg\' width=\'40\' height=\'40\' viewBox=\'0 0 24 24\' fill=\'none\' stroke=\'%2364748b\' stroke-width=\'2\'><rect width=\'18\' height=\'18\' x=\'3\' y=\'3\' rx=\'2\'/><circle cx=\'9\' cy=\'9\' r=\'2\'/><path d=\'m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21\'/></svg>'">
+        </div>
+        <div class="card-body">
+          <div class="file-name" title="${escHtml(f.filename)}">${escHtml(f.filename)}</div>
+          <div class="file-meta">
+            <span class="file-meta-source ${sourceClass}">${sourceLabel}</span>
+            <span class="file-meta-pill">${ext}</span>
+            <span class="file-meta-pill">💾 ${f.file_size_human || formatSize(f.file_size)}</span>
+            ${dimensionHtml}
+            ${elapsedHtml}
+            ${retryBadgeHtml}
+          </div>
+          ${f.status === 'processing' ? '<div class="file-progress"><div class="file-progress-bar" id="prog-' + id + '" style="width:50%"></div></div>' : ''}
+          ${f.error ? '<div style="font-size:0.74rem;color:var(--error);margin-top:2px;word-break:break-word;">' + escHtml(f.error) + '</div>' : ''}
+        </div>
+        <div class="card-footer">
+          <span>${id.substring(0, 8)}...</span>
+          <div class="file-actions">${actionsHtml}</div>
+        </div>`;
+    } else {
+      item.innerHTML = `
+        <input type="checkbox" class="card-checkbox" data-job-id="${id}" ${isSelected ? 'checked' : ''} onchange="toggleJobSelection('${id}', this.checked)">
+        <img class="file-thumb" src="${thumbUrl}" alt="" loading="lazy" onerror="this.src='data:image/svg+xml;utf8,<svg xmlns=\'http://www.w3.org/2000/svg\' width=\'40\' height=\'40\' viewBox=\'0 0 24 24\' fill=\'none\' stroke=\'%2364748b\' stroke-width=\'2\'><rect width=\'18\' height=\'18\' x=\'3\' y=\'3\' rx=\'2\'/><circle cx=\'9\' cy=\'9\' r=\'2\'/><path d=\'m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21\'/></svg>'">
+        <div class="file-info">
+          <div class="file-name" title="${escHtml(f.filename)}">${escHtml(f.filename)}</div>
+          <div class="file-meta">
+            <span class="file-meta-source ${sourceClass}">${sourceLabel}</span>
+            <span class="file-meta-pill">${ext}</span>
+            <span class="file-meta-pill">💾 ${f.file_size_human || formatSize(f.file_size)}</span>
+            ${dimensionHtml}
+            ${elapsedHtml}
+            ${retryBadgeHtml}
+          </div>
+          ${f.status === 'processing' ? '<div class="file-progress"><div class="file-progress-bar" id="prog-' + id + '" style="width:50%"></div></div>' : ''}
+          ${f.error ? '<div style="font-size:0.74rem;color:var(--error);margin-top:2px;word-break:break-word;">' + escHtml(f.error) + '</div>' : ''}
+        </div>
+        <div class="file-status">
+          <span class="status-badge ${statusClass}">${statusLabel}</span>
+          <div class="file-actions">${actionsHtml}</div>
+        </div>`;
+    }
+
+    listEl.appendChild(item);
+  });
+
+  const hasPending = Array.from(fileQueue.values()).some(j => ['pending', 'queued', 'validating'].includes(j.status));
+  document.getElementById('btnStart').disabled = !hasPending || isProcessing;
+}
+
+function changeQueuePage(delta) {
+  currentQueuePage += delta;
+  renderFileList();
+}
+
+function updateQueueInfo() {
+  const jobs = Array.from(fileQueue.values());
+  const total = jobs.length;
+  const pending = jobs.filter(j => ['pending', 'queued', 'validating'].includes(j.status)).length;
+  const processing = jobs.filter(j => j.status === 'processing').length;
+  const done = jobs.filter(j => j.status === 'completed').length;
+  const error = jobs.filter(j => ['error', 'failed'].includes(j.status)).length;
+
+  document.getElementById('sumTotal').textContent = total;
+  document.getElementById('sumPending').textContent = pending;
+  const sumProc = document.getElementById('sumProcessing');
+  if (sumProc) sumProc.textContent = processing;
+  document.getElementById('sumDone').textContent = done;
+  document.getElementById('sumError').textContent = error;
+  document.getElementById('queueBadge').textContent = `${total} items`;
+
+  const btnRetryAll = document.getElementById('btnRetryAll');
+  if (btnRetryAll) {
+    btnRetryAll.style.display = error > 0 ? '' : 'none';
+  }
+
+  const pct = total > 0 ? Math.round((done / total) * 100) : 0;
+  const sidebarPct = document.getElementById('sidebarProgressPct');
+  const sidebarFill = document.getElementById('sidebarProgressFill');
+  if (sidebarPct) sidebarPct.textContent = `${pct}%`;
+  if (sidebarFill) sidebarFill.style.width = `${pct}%`;
+
+  const overallFill = document.getElementById('overallProgress');
+  if (overallFill) overallFill.style.width = `${pct}%`;
+
+  const hasPending = pending > 0;
+  document.getElementById('btnStart').disabled = !hasPending || isProcessing;
+}
+
+/* ═══════════════════════════════════════════════════════════════ */
+/* Queue Management Actions (Clear, Remove, Retry)                */
+/* ═══════════════════════════════════════════════════════════════ */
+async function clearAll() {
+  if (fileQueue.size === 0) return;
+  if (isProcessing) {
+    toast('Không thể xóa danh sách khi đang trong tiến trình xử lý.', 'warning');
+    return;
+  }
+  if (!confirm(t('clear_confirm'))) return;
+
+  try {
+    const r = await fetch('/api/clear-jobs', { method: 'POST' });
+    const d = await r.json();
+    if (d.status === 'success' || d.removed != null) {
+      fileQueue.clear();
+      selectedJobIds.clear();
+      renderFileList();
+      updateQueueInfo();
+      toast('Đã xóa toàn bộ hàng đợi ảnh.', 'info');
+    } else {
+      toast(d.error || 'Lỗi khi xóa hàng đợi.', 'error');
+    }
+  } catch(e) {
+    toast('Lỗi khi xóa hàng đợi: ' + e.message, 'error');
+  }
+}
+
+async function removeJob(id) {
+  try {
+    const r = await fetch('/api/remove-job', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ job_id: id })
+    });
+    const d = await r.json();
+    if (d.status === 'success' || d.removed) {
+      fileQueue.delete(id);
+      selectedJobIds.delete(id);
+      renderFileList();
+      updateQueueInfo();
+      toast('Đã xóa công việc khỏi hàng đợi.', 'info');
+    } else {
+      toast(d.error || 'Không thể xóa công việc.', 'error');
+    }
+  } catch(e) {
+    toast('Lỗi khi xóa job: ' + e.message, 'error');
+  }
+}
+
+async function retryJob(id) {
+  try {
+    const r = await fetch('/api/retry', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ job_ids: [id], job_id: id })
+    });
+    const d = await r.json();
+    if (d.status === 'success' || d.requeued != null) {
+      const j = fileQueue.get(id);
+      if (j) {
+        j.status = 'pending';
+        j.error = null;
+        renderFileList();
+        updateQueueInfo();
+      }
+      toast('Đã xếp hàng thử lại ảnh.', 'info');
+    } else {
+      toast(d.error || 'Không thể thử lại ảnh.', 'error');
+    }
+  } catch(e) {
+    toast('Lỗi kết nối khi thử lại: ' + e.message, 'error');
+  }
+}
+
+async function retryAllFailed() {
+  const failedJobs = Array.from(fileQueue.values()).filter(j => ['error', 'failed'].includes(j.status));
+  if (failedJobs.length === 0) return;
+  for (const j of failedJobs) {
+    await retryJob(j.job_id || j.id);
+  }
+  toast(`Đã gửi yêu cầu thử lại ${failedJobs.length} ảnh thất bại.`, 'info');
+}
+
+async function reprocessSingleJob(id) {
+  try {
+    const r = await fetch('/api/reprocess', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ job_id: id })
+    });
+    const d = await r.json();
+    if ((d.status === 'success' || d.reprocessed_count != null) && d.jobs && d.jobs.length > 0) {
+      d.jobs.forEach(newJ => {
+        fileQueue.set(newJ.id, {
+          job_id: newJ.id,
+          id: newJ.id,
+          filename: newJ.filename,
+          input_path: newJ.input_path,
+          dimensions: newJ.dimensions,
+          file_size: newJ.file_size,
+          file_size_human: newJ.file_size_human,
+          status: 'pending',
+          source: 'upload',
+          thumbnail_url: `/api/thumbnail/${newJ.id}`
+        });
+      });
+      renderFileList();
+      updateQueueInfo();
+      toast('Đã tạo job mới để xử lý lại ảnh.', 'success');
+    } else {
+      toast(d.error || 'Lỗi khi xử lý lại.', 'error');
+    }
+  } catch(e) {
+    toast('Lỗi kết nối: ' + e.message, 'error');
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════════ */
+/* Processing Lifecycle (Start, Cancel, Progress)                 */
+/* ═══════════════════════════════════════════════════════════════ */
+async function startProcessing() {
+  const pendingJobs = Array.from(fileQueue.values()).filter(j => ['pending', 'queued', 'validating', 'error', 'failed', 'cancelled'].includes(j.status));
+  if (pendingJobs.length === 0) {
+    toast('Không có ảnh nào đang chờ xử lý.', 'warning');
+    return;
+  }
+
+  let targetIds = [];
+  if (selectedJobIds.size > 0) {
+    const selectedPending = pendingJobs.filter(j => selectedJobIds.has(j.job_id || j.id));
+    if (selectedPending.length > 0) {
+      targetIds = selectedPending.map(j => j.job_id || j.id);
+    }
+  }
+  if (targetIds.length === 0) {
+    targetIds = pendingJobs.map(j => j.job_id || j.id);
+  }
+
+  isProcessing = true;
+  document.getElementById('btnStart').disabled = true;
+  document.getElementById('btnStart').style.display = 'none';
+  document.getElementById('btnCancel').style.display = '';
+
+  const tileVal = document.getElementById('tileSize').value;
+  const formatVal = document.getElementById('exportFormat').value;
+  const qualityVal = parseInt(document.getElementById('exportQuality').value, 10);
+
+  const payload = {
+    job_ids: targetIds,
+    tile_size: tileVal === 'auto' ? 'auto' : parseInt(tileVal, 10),
+    tile_mode: tileVal === 'auto' ? 'auto' : 'manual',
+    format: formatVal,
+    export_format: formatVal,
+    quality: qualityVal,
+    output_folder: currentOutputFolder || '',
+    output_dir: currentOutputFolder || ''
+  };
+
+  try {
+    const r = await fetch('/api/process', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+    const d = await r.json();
+    if (d.status === 'success') {
+      toast('Bắt đầu quá trình nâng cấp ảnh.', 'info');
+    } else {
+      toast(d.error || 'Không thể bắt đầu xử lý.', 'error');
+      finishProcessing();
+    }
+  } catch(e) {
+    toast('Lỗi kết nối: ' + e.message, 'error');
+    finishProcessing();
+  }
+}
+
+async function cancelProcessing() {
+  try {
+    const r = await fetch('/api/cancel', { method: 'POST' });
+    const d = await r.json();
+    toast('Đang hủy xử lý...', 'warning');
+  } catch(e) {
+    toast('Lỗi gửi lệnh hủy: ' + e.message, 'error');
+  }
+}
+
+function finishProcessing() {
+  isProcessing = false;
+  document.getElementById('btnStart').style.display = '';
+  document.getElementById('btnCancel').style.display = 'none';
+  updateQueueInfo();
+}
+
+/* ═══════════════════════════════════════════════════════════════ */
+/* SSE Connection & Named Event Handlers                          */
+/* ═══════════════════════════════════════════════════════════════ */
+function connectSSE() {
+  if (evtSource) evtSource.close();
+  evtSource = new EventSource('/api/progress');
+
+  evtSource.addEventListener('job_state', (e) => {
+    const d = JSON.parse(e.data);
+    const f = fileQueue.get(d.job_id);
+    if (f) {
+      f.status = d.status;
+      f.error = d.error;
+      f.elapsed = d.elapsed;
+      f.is_oom = d.is_oom || false;
+    }
+  });
+
+  evtSource.addEventListener('job_start', (e) => {
+    const d = JSON.parse(e.data);
+    const f = fileQueue.get(d.job_id);
+    if (f) { f.status = 'processing'; }
+    renderFileList();
+    updateQueueInfo();
+    document.getElementById('statusMessage').textContent = `Processing: ${d.filename}`;
+  });
+
+  evtSource.addEventListener('job_progress', (e) => {
+    const d = JSON.parse(e.data);
+    const bar = document.getElementById('prog-' + d.job_id);
+    if (bar) bar.style.width = d.progress_pct + '%';
+    if (d.detail) {
+      document.getElementById('statusMessage').textContent = `${d.filename}: ${d.detail}`;
+    }
+  });
+
+  evtSource.addEventListener('job_complete', (e) => {
+    const d = JSON.parse(e.data);
+    const f = fileQueue.get(d.job_id);
+    if (f) {
+      f.status = 'completed';
+      f.elapsed = d.elapsed;
+      f.output_dimensions = d.output_dimensions;
+      f.output_size = d.output_size;
+    }
+    renderFileList();
+    updateQueueInfo();
+    toast(`✅ ${d.filename} completed in ${d.elapsed}s`, 'success');
+  });
+
+  evtSource.addEventListener('job_error', (e) => {
+    const d = JSON.parse(e.data);
+    const f = fileQueue.get(d.job_id);
+    if (f) {
+      f.status = d.status || 'error';
+      f.error = d.error;
+      f.is_oom = d.is_oom || false;
+      f.elapsed = d.elapsed;
+      if (d.retry_count != null) f.retry_count = d.retry_count;
+    }
+    renderFileList();
+    updateQueueInfo();
+    toast(`❌ ${d.filename}: ${(d.error || '').substring(0, 80)}`, 'error');
+  });
+
+  evtSource.addEventListener('queue_complete', (e) => {
+    const d = JSON.parse(e.data);
+    finishProcessing();
+    const msg = d.cancelled
+      ? `Cancelled. ${d.completed} completed, ${d.errors} errors.`
+      : `All done! ${d.completed} completed, ${d.errors} errors.`;
+    document.getElementById('statusMessage').textContent = msg;
+    toast(msg, d.errors > 0 ? 'warning' : 'success');
+  });
+
+  /* Video SSE Listeners */
+  evtSource.addEventListener('video_stage', (e) => {
+    try {
+      const d = JSON.parse(e.data);
+      if (typeof updateVideoStageUI === 'function') updateVideoStageUI(d.stage, d.detail);
+    } catch(err) {}
+  });
+
+  evtSource.addEventListener('video_progress', (e) => {
+    try {
+      const d = JSON.parse(e.data);
+      if (typeof updateVideoProgressUI === 'function') updateVideoProgressUI(d);
+    } catch(err) {}
+  });
+
+  evtSource.addEventListener('video_complete', (e) => {
+    try {
+      const d = JSON.parse(e.data);
+      if (typeof onVideoCompleted === 'function') onVideoCompleted(d);
+    } catch(err) {}
+  });
+
+  evtSource.addEventListener('video_error', (e) => {
+    try {
+      const d = JSON.parse(e.data);
+      if (typeof onVideoError === 'function') onVideoError(d);
+    } catch(err) {}
+  });
+
+  evtSource.onerror = () => {
+    setTimeout(connectSSE, 3000);
+  };
+}
+
+/* ═══════════════════════════════════════════════════════════════ */
+/* Native Folder Browser Bridge                                    */
+/* ═══════════════════════════════════════════════════════════════ */
+let isFolderBrowserActive = false;
+
+async function browseFolderNative(mode = 'input') {
+  if (isFolderBrowserActive) return;
+  isFolderBrowserActive = true;
+
+  const buttonsToDisable = [];
+  if (mode === 'input') {
+    ['btnChooseFolderMain', 'btnBrowseInput', 'btnChangeFolderStatus', 'btnEmptyQueueChooseFolder'].forEach(id => {
+      const b = document.getElementById(id);
+      if (b) buttonsToDisable.push(b);
+    });
+  } else {
+    const bOut = document.getElementById('btnBrowseOutput');
+    if (bOut) buttonsToDisable.push(bOut);
+  }
+
+  const originalStates = buttonsToDisable.map(b => ({ btn: b, html: b.innerHTML, disabled: b.disabled }));
+  buttonsToDisable.forEach(b => {
+    b.disabled = true;
+    b.innerHTML = `<span>⏳</span> <span>${t('folder_dialog_opening') || 'Đang mở...'}</span>`;
+  });
+
+  const currentPath = (mode === 'input') ? currentInputFolder : currentOutputFolder;
+  const dialogTitle = (mode === 'input') ? (t('btn_choose_input_folder') || 'Chọn thư mục ảnh - AI Image Studio') : (t('folder_output') || 'Chọn thư mục xuất - AI Image Studio');
+
+  try {
+    const res = await fetch('/api/browse-folder', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ initial_dir: currentPath || '', title: dialogTitle })
+    });
+
+    const data = await res.json();
+
+    if (res.status === 403 && data.is_remote) {
+      toast(t('remote_browse_warning') || 'Duyệt thư mục hệ thống chỉ khả dụng trên máy chủ cục bộ.', 'warning');
+      openFolderBrowser(mode);
+      return;
+    }
+
+    if (data.status === 'busy') {
+      toast(data.error || 'Hộp thoại chọn thư mục đang mở.', 'warning');
+      return;
+    }
+
+    if (data.status === 'cancelled') {
+      toast(t('folder_cancelled') || 'Đã đóng hộp thoại chọn thư mục.', 'info');
+      return;
+    }
+
+    if (data.status === 'error' || !res.ok) {
+      toast(data.error || 'Lỗi khi chọn thư mục', 'error');
+      return;
+    }
+
+    if (data.status === 'success' && data.path) {
+      const selectedPath = data.path;
+      if (mode === 'input') {
+        currentInputFolder = selectedPath;
+        const inInput = document.getElementById('inputFolder');
+        if (inInput) {
+          inInput.value = shortenPath(selectedPath);
+          inInput.title = selectedPath;
+        }
+        const lbl = document.getElementById('currentFolderLabel');
+        if (lbl) lbl.textContent = `Folder: ${shortenPath(selectedPath, 40)}`;
+
+        const box = document.getElementById('folderStatusBox');
+        if (box) {
+          box.style.display = 'block';
+          const pEl = document.getElementById('folderSelectedPath');
+          if (pEl) {
+            pEl.textContent = selectedPath;
+            pEl.title = selectedPath;
+          }
+        }
+        const resetBtn = document.getElementById('btnResetInputFolder');
+        if (resetBtn) resetBtn.style.display = '';
+
+        // Load images without clearing previous selections
+        await loadImagesFromFolder(selectedPath, false);
+      } else if (mode === 'output') {
+        currentOutputFolder = selectedPath;
+        const outInput = document.getElementById('outputFolder');
+        if (outInput) {
+          outInput.value = shortenPath(selectedPath);
+          outInput.title = selectedPath;
+        }
+        try {
+          const rSet = await fetch('/api/set-output-dir', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ path: selectedPath })
+          });
+          const dSet = await rSet.json();
+          if (dSet.output_dir) {
+            currentOutputFolder = dSet.output_dir;
+            toast(t('output_folder_updated') || 'Đã cập nhật thư mục xuất', 'success');
+          } else if (dSet.error) {
+            toast(dSet.error, 'error');
+          }
+        } catch(e) {
+          toast('Lỗi cập nhật thư mục xuất: ' + e.message, 'error');
+        }
+      }
+    }
+  } catch (err) {
+    toast('Lỗi kết nối khi mở hộp thoại: ' + err.message, 'error');
+  } finally {
+    originalStates.forEach(({ btn, html, disabled }) => {
+      btn.disabled = disabled;
+      btn.innerHTML = html;
+    });
+    isFolderBrowserActive = false;
+  }
+}
+
+/* Fallback Folder Browser Modal */
+function openFolderBrowser(mode = 'input') {
+  folderBrowserMode = mode;
+  document.getElementById('folderModal').classList.add('show');
+  browseTo('');
+}
+
+function closeFolderBrowser() {
+  document.getElementById('folderModal').classList.remove('show');
+}
+
+async function browseTo(path) {
+  folderBrowserPath = path;
+  try {
+    const res = await fetch(`/api/browse-folder?path=${encodeURIComponent(path)}`);
+    const data = await res.json();
+    if (data.error) {
+      toast(data.error, 'error');
+      return;
+    }
+    document.getElementById('folderCurrentPath').textContent = data.current || 'My Computer';
+    document.getElementById('folderUp').disabled = data.is_root;
+
+    const listEl = document.getElementById('folderList');
+    listEl.innerHTML = '';
+    data.folders.forEach(name => {
+      const div = document.createElement('div');
+      div.className = 'folder-item';
+      div.innerHTML = `<span class="folder-icon">📁</span> <span>${escHtml(name)}</span>`;
+      div.onclick = () => {
+        const next = data.current ? (data.current.endsWith('\\') || data.current.endsWith('/') ? data.current + name : data.current + '\\' + name) : name;
+        browseTo(next);
+      };
+      listEl.appendChild(div);
+    });
+  } catch(e) {
+    toast('Lỗi duyệt thư mục', 'error');
+  }
+}
+
+function folderGoUp() {
+  if (!folderBrowserPath) return;
+  const parts = folderBrowserPath.replace(/\\/g, '/').split('/').filter(Boolean);
+  parts.pop();
+  const up = parts.length > 0 ? parts.join('\\') : '';
+  browseTo(up);
+}
+
+async function selectFolder() {
+  if (!folderBrowserPath) {
+    toast('Vui lòng chọn một thư mục cụ thể', 'warning');
+    return;
+  }
+  closeFolderBrowser();
+  if (folderBrowserMode === 'input') {
+    currentInputFolder = folderBrowserPath;
+    const inInput = document.getElementById('inputFolder');
+    if (inInput) {
+      inInput.value = shortenPath(folderBrowserPath);
+      inInput.title = folderBrowserPath;
+    }
+    await loadImagesFromFolder(folderBrowserPath, false);
+  } else {
+    currentOutputFolder = folderBrowserPath;
+    const outInput = document.getElementById('outputFolder');
+    if (outInput) {
+      outInput.value = shortenPath(folderBrowserPath);
+      outInput.title = folderBrowserPath;
+    }
+    await fetch('/api/set-output-dir', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ path: folderBrowserPath })
+    });
+  }
+}
+
+let isOpenOutputActive = false;
+
+async function openOutputFolder() {
+  if (isOpenOutputActive) return;
+  isOpenOutputActive = true;
+
+  const btn = document.getElementById('btnOpenOutput');
+  const originalHtml = btn ? btn.innerHTML : '';
+  if (btn) {
+    btn.disabled = true;
+    btn.innerHTML = '<span>⏳</span> <span>Đang mở...</span>';
+  }
+
+  try {
+    const targetPath = currentOutputFolder || (document.getElementById('outputFolder') ? (document.getElementById('outputFolder').title || document.getElementById('outputFolder').value) : '');
+    const r = await fetch('/api/open-folder', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ path: targetPath })
+    });
+    const d = await r.json();
+    if (d.status === 'success' || d.opened) {
+      toast(t('open_output_success') || 'Đã mở thư mục xuất trong Windows Explorer', 'info');
+    } else {
+      toast(d.error || 'Không thể mở thư mục xuất', 'error');
+    }
+  } catch(e) {
+    toast('Lỗi kết nối khi mở thư mục: ' + e.message, 'error');
+  } finally {
+    if (btn) {
+      btn.disabled = false;
+      btn.innerHTML = originalHtml;
+    }
+    isOpenOutputActive = false;
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════════ */
+/* Batch Exports (ZIP & Reports)                                  */
+/* ═══════════════════════════════════════════════════════════════ */
+function exportZip(mode = 'all') {
+  toggleDropdown('zipMenu');
+  const jobIds = mode === 'selected' ? Array.from(selectedJobIds) : [];
+  if (mode === 'selected' && jobIds.length === 0) {
+    toast('Vui lòng chọn ít nhất một ảnh để xuất ZIP.', 'warning');
+    return;
+  }
+  const form = document.createElement('form');
+  form.method = 'POST';
+  form.action = '/api/export/zip';
+  form.style.display = 'none';
+
+  const inpMode = document.createElement('input');
+  inpMode.name = 'mode';
+  inpMode.value = mode;
+  form.appendChild(inpMode);
+
+  if (jobIds.length > 0) {
+    const inpIds = document.createElement('input');
+    inpIds.name = 'job_ids';
+    inpIds.value = JSON.stringify(jobIds);
+    form.appendChild(inpIds);
+  }
+
+  document.body.appendChild(form);
+  form.submit();
+  setTimeout(() => form.remove(), 1000);
+}
+
+function exportReport(format = 'csv', mode = 'all') {
+  toggleDropdown('reportMenu');
+  const jobIds = mode === 'selected' ? Array.from(selectedJobIds) : [];
+  if (mode === 'selected' && jobIds.length === 0) {
+    toast('Vui lòng chọn ít nhất một ảnh để xuất báo cáo.', 'warning');
+    return;
+  }
+  const form = document.createElement('form');
+  form.method = 'POST';
+  form.action = '/api/export/report';
+  form.style.display = 'none';
+
+  const inpFmt = document.createElement('input');
+  inpFmt.name = 'format';
+  inpFmt.value = format;
+  form.appendChild(inpFmt);
+
+  const inpMode = document.createElement('input');
+  inpMode.name = 'mode';
+  inpMode.value = mode;
+  form.appendChild(inpMode);
+
+  if (jobIds.length > 0) {
+    const inpIds = document.createElement('input');
+    inpIds.name = 'job_ids';
+    inpIds.value = JSON.stringify(jobIds);
+    form.appendChild(inpIds);
+  }
+
+  document.body.appendChild(form);
+  form.submit();
+  setTimeout(() => form.remove(), 1000);
+}
+
+/* ═══════════════════════════════════════════════════════════════ */
+/* Job Log Modal                                                  */
+/* ═══════════════════════════════════════════════════════════════ */
+let currentLogJobId = null;
+
+async function openLogModal(id) {
+  currentLogJobId = id;
+  document.getElementById('modalLog').classList.add('show');
+  document.getElementById('logModalTitle').textContent = `📋 Nhật ký xử lý Job (${id.substring(0, 8)}...)`;
+  document.getElementById('logModalContent').textContent = 'Đang tải log...';
+
+  try {
+    const r = await fetch(`/api/jobs/${id}/log`);
+    const d = await r.json();
+    document.getElementById('logModalContent').textContent = d.log || 'Chưa có dữ liệu log cho công việc này.';
+  } catch(e) {
+    document.getElementById('logModalContent').textContent = 'Lỗi tải log: ' + e.message;
+  }
+}
+
+function closeLogModal() {
+  document.getElementById('modalLog').classList.remove('show');
+  currentLogJobId = null;
+}
+
+function refreshCurrentLog() {
+  if (currentLogJobId) openLogModal(currentLogJobId);
+}
+
+async function openQuickPreview(jobId) {
+  const f = fileQueue.get(jobId);
+  if (!f) return;
+  currentPreviewJobId = jobId;
+
+  const modal = document.getElementById('previewModal');
+  const loading = document.getElementById('previewLoading');
+  const content = document.getElementById('previewContent');
+
+  modal.classList.add('show');
+  loading.style.display = 'block';
+  content.style.display = 'none';
+
+  try {
+    const fmt = document.getElementById('exportFormat').value;
+    const qual = document.getElementById('exportQuality').value;
+    const r = await fetch(`/api/preview/${jobId}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        patch_size: 256,
+        format: fmt === 'auto' ? 'webp' : fmt,
+        quality: parseInt(qual) || 90
+      })
+    });
+    const d = await r.json();
+    loading.style.display = 'none';
+    if (!r.ok || d.error) {
+      toast(d.error || 'Lỗi khi tạo Quick Preview', 'error');
+      closePreviewModal();
+      return;
+    }
+
+    document.getElementById('prevImgOrig').src = d.orig_url + '?t=' + Date.now();
+    document.getElementById('prevImgEnh').src = d.enhanced_url + '?t=' + Date.now();
+    document.getElementById('prevMetaTime').textContent = `Thời gian AI: ${d.elapsed_seconds}s`;
+    document.getElementById('prevMetaRes').textContent = `Kích thước: 256x256 ➜ ${d.enhanced_dimensions}`;
+    document.getElementById('prevMetaCoord').textContent = `Crop: x=${d.crop_box.x}, y=${d.crop_box.y}`;
+    content.style.display = 'block';
+  } catch(e) {
+    loading.style.display = 'none';
+    toast('Lỗi kết nối xem trước: ' + e.message, 'error');
+    closePreviewModal();
+  }
+}
+
+function closePreviewModal() {
+  document.getElementById('previewModal').classList.remove('show');
+  currentPreviewJobId = null;
+}
+
+function processFromPreview() {
+  if (!currentPreviewJobId) return;
+  const jid = currentPreviewJobId;
+  closePreviewModal();
+  processSpecificJobs([jid]);
+}
+
+/* ═══════════════════════════════════════════════════════════════ */
+/* Initialization                                                 */
+/* ═══════════════════════════════════════════════════════════════ */
+document.addEventListener('DOMContentLoaded', async () => {
+  setLanguage(currentLang);
+  setViewMode(currentViewMode);
+  checkStatus();
+  updateGpuStats();
+  setInterval(updateGpuStats, 2500);
+  setupDragDrop();
+  setupVideoDragDrop();
+  connectSSE();
+  await initDefaultDirectories();
+});
+
+function switchMainTab(tab) {
+  currentMainTab = tab;
+  const tabImg = document.getElementById('tabImage');
+  const tabVid = document.getElementById('tabVideo');
+  const secImg = document.getElementById('imageSection');
+  const secVid = document.getElementById('videoSection');
+
+  if (tab === 'video') {
+    tabImg.classList.remove('active');
+    tabVid.classList.add('active');
+    secImg.style.display = 'none';
+    secVid.style.display = 'flex';
+    loadVideoJobs();
+  } else {
+    tabVid.classList.remove('active');
+    tabImg.classList.add('active');
+    secVid.style.display = 'none';
+    secImg.style.display = 'flex';
+  }
+}
+
+function setupVideoDragDrop() {
+  const dz = document.getElementById('videoDropzone');
+  if (!dz) return;
+
+  ['dragenter', 'dragover'].forEach(evt => {
+    dz.addEventListener(evt, e => {
+      e.preventDefault();
+      e.stopPropagation();
+      dz.style.borderColor = 'var(--accent)';
+      dz.style.background = 'var(--accent-dim)';
+    });
+  });
+
+  ['dragleave', 'drop'].forEach(evt => {
+    dz.addEventListener(evt, e => {
+      e.preventDefault();
+      e.stopPropagation();
+      dz.style.borderColor = '';
+      dz.style.background = '';
+    });
+  });
+
+  dz.addEventListener('drop', e => {
+    const files = e.dataTransfer.files;
+    if (files && files.length > 0) {
+      handleVideoFileSelect(files);
+    }
+  });
+}
+
+async function handleVideoFileSelect(files) {
+  if (!files || files.length === 0) return;
+  const file = files[0];
+  currentVideoFile = file;
+  await uploadAndAnalyzeVideo(file);
+}
+
+async function uploadAndAnalyzeVideo(file) {
+  toast(`Đang tải lên và phân tích ${file.name}...`, 'info');
+  const formData = new FormData();
+  formData.append('file', file);
+
+  try {
+    const rUp = await fetch('/api/video/upload', {
+      method: 'POST',
+      body: formData
+    });
+    const dUp = await rUp.json();
+    if (!rUp.ok || !dUp.success || dUp.accepted.length === 0) {
+      const err = (dUp.rejected && dUp.rejected[0] && dUp.rejected[0].reason) || 'Upload failed';
+      toast(err, 'error');
+      return;
+    }
+
+    const savedPath = dUp.accepted[0].path;
+
+    // Analyze video
+    const rAn = await fetch('/api/video/analyze', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ source_path: savedPath })
+    });
+    const analysis = await rAn.json();
+    if (!rAn.ok || !analysis.valid) {
+      toast(analysis.error || 'Video analysis failed', 'error');
+      return;
+    }
+
+    currentVideoAnalysis = analysis;
+    populateVideoAnalysis(analysis);
+    document.getElementById('videoAnalysisCard').style.display = 'flex';
+    toast(`Phân tích video thành công: ${analysis.video.width}x${analysis.video.height} (${analysis.video.total_frames} frames)`, 'success');
+  } catch (e) {
+    toast('Lỗi phân tích video: ' + e.message, 'error');
+  }
+}
+
+function populateVideoAnalysis(a) {
+  document.getElementById('vMetaFilename').textContent = a.filename;
+  document.getElementById('vMetaRes').textContent = `${a.video.width}x${a.video.height}`;
+  document.getElementById('vMetaTargetRes').textContent = `${a.video.target_width}x${a.video.target_height} (4X)`;
+  document.getElementById('vMetaFps').textContent = `${a.video.fps} fps ${a.video.is_vfr ? '(VFR)' : '(CFR)'}`;
+  document.getElementById('vMetaDuration').textContent = `${a.duration}s`;
+  document.getElementById('vMetaFrames').textContent = a.video.total_frames;
+  document.getElementById('vMetaAudio').textContent = a.audio.has_audio ? `${a.audio.primary_codec} (${a.audio.stream_count} stream)` : 'Không có âm thanh';
+  document.getElementById('vMetaStorage').textContent = a.storage.estimated_temp_human;
+  document.getElementById('vMetaFreeDisk').textContent = a.storage.free_disk_human;
+
+  if (!a.storage.is_space_sufficient) {
+    document.getElementById('vMetaStorage').style.color = 'var(--error)';
+    toast('Cảnh báo: Ổ đĩa có thể không đủ dung lượng tạm cho toàn bộ video!', 'warning');
+  } else {
+    document.getElementById('vMetaStorage').style.color = '';
+  }
+}
+
+async function startVideoUpscaling() {
+  if (!currentVideoAnalysis) {
+    toast('Vui lòng chọn video trước khi bắt đầu', 'warning');
+    return;
+  }
+
+  const quality = document.getElementById('videoQualityPreset').value;
+  const tileSelect = document.getElementById('videoTileSize').value;
+  const tileMode = tileSelect === 'auto' ? 'auto' : 'manual';
+  const tileSize = tileSelect === 'auto' ? 128 : parseInt(tileSelect);
+
+  try {
+    const r = await fetch('/api/video/jobs', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        source_path: currentVideoAnalysis.filename,
+        quality_preset: quality,
+        tile_mode: tileMode,
+        tile_size: tileSize,
+        auto_start: true
+      })
+    });
+    const d = await r.json();
+    if (!r.ok || !d.success) {
+      toast(d.error || 'Khởi tạo tác vụ video thất bại', 'error');
+      return;
+    }
+
+    currentVideoJobId = d.job.id;
+    document.getElementById('videoProgressCard').style.display = 'flex';
+    document.getElementById('videoPlayerCard').style.display = 'none';
+
+    document.getElementById('btnStartVideo').style.display = 'none';
+    document.getElementById('btnPauseVideo').style.display = '';
+    document.getElementById('btnCancelVideo').style.display = '';
+    document.getElementById('btnResumeVideo').style.display = 'none';
+
+    resetVideoStageStepper();
+    toast('Đã bắt đầu nâng cấp video trên GPU...', 'info');
+    loadVideoJobs();
+  } catch (e) {
+    toast('Lỗi khởi tạo video: ' + e.message, 'error');
+  }
+}
+
+async function pauseActiveVideo() {
+  if (!currentVideoJobId) return;
+  try {
+    await fetch(`/api/video/jobs/${currentVideoJobId}/pause`, { method: 'POST' });
+    document.getElementById('btnPauseVideo').style.display = 'none';
+    document.getElementById('btnResumeVideo').style.display = '';
+    toast('Đang tạm dừng video ở ranh giới khung hình an toàn...', 'warning');
+  } catch (e) {
+    toast('Lỗi tạm dừng: ' + e.message, 'error');
+  }
+}
+
+async function resumeActiveVideo() {
+  if (!currentVideoJobId) return;
+  try {
+    await fetch(`/api/video/jobs/${currentVideoJobId}/resume`, { method: 'POST' });
+    document.getElementById('btnResumeVideo').style.display = 'none';
+    document.getElementById('btnPauseVideo').style.display = '';
+    toast('Tiếp tục nâng cấp video...', 'info');
+  } catch (e) {
+    toast('Lỗi tiếp tục: ' + e.message, 'error');
+  }
+}
+
+async function cancelActiveVideo() {
+  if (!currentVideoJobId) return;
+  try {
+    await fetch(`/api/video/jobs/${currentVideoJobId}/cancel`, { method: 'POST' });
+    document.getElementById('btnStartVideo').style.display = '';
+    document.getElementById('btnPauseVideo').style.display = 'none';
+    document.getElementById('btnResumeVideo').style.display = 'none';
+    document.getElementById('btnCancelVideo').style.display = 'none';
+    toast('Đã gửi yêu cầu hủy tác vụ video', 'warning');
+    loadVideoJobs();
+  } catch (e) {
+    toast('Lỗi hủy video: ' + e.message, 'error');
+  }
+}
+
+function resetVideoStageStepper() {
+  ['stageAnalyzing', 'stageExtracting', 'stageProcessing', 'stageReconstructing', 'stageRestoringAudio', 'stageVerifying'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.className = 'stage-pill';
+  });
+}
+
+function updateVideoStageUI(stage, detail) {
+  const stageMap = {
+    'ANALYZING': 'stageAnalyzing',
+    'EXTRACTING': 'stageExtracting',
+    'EXTRACTING_AUDIO': 'stageExtracting',
+    'PROCESSING': 'stageProcessing',
+    'RECONSTRUCTING': 'stageReconstructing',
+    'RESTORING_AUDIO': 'stageRestoringAudio',
+    'VERIFYING': 'stageVerifying'
+  };
+
+  const currentId = stageMap[stage];
+  if (currentId) {
+    const el = document.getElementById(currentId);
+    if (el) el.className = 'stage-pill active';
+  }
+
+  const badge = document.getElementById('videoProgressBadge');
+  if (badge) badge.textContent = stage;
+  if (detail) {
+    document.getElementById('videoProgressTitle').textContent = detail;
+  }
+}
+
+function updateVideoProgressUI(d) {
+  const bar = document.getElementById('videoProgressBar');
+  if (bar) bar.style.width = (d.progress_pct || 0) + '%';
+
+  const pctEl = document.getElementById('videoProgressPct');
+  if (pctEl) pctEl.textContent = (d.progress_pct || 0) + '%';
+
+  const frEl = document.getElementById('videoProgressFrames');
+  if (frEl && d.current_frame != null) {
+    frEl.textContent = `Khung hình: ${d.current_frame} / ${d.total_frames}`;
+  }
+
+  const spEl = document.getElementById('videoProgressSpeed');
+  if (spEl && d.fps_rate != null) {
+    spEl.textContent = `Tốc độ: ${d.fps_rate} fps`;
+  }
+
+  const etaEl = document.getElementById('videoProgressEta');
+  if (etaEl && d.eta_seconds != null) {
+    etaEl.textContent = `Ước tính còn: ${d.eta_seconds}s`;
+  }
+
+  const tileEl = document.getElementById('videoProgressTile');
+  if (tileEl && d.tile_used != null) {
+    tileEl.textContent = `Tile: ${d.tile_used}`;
+  }
+}
+
+function onVideoCompleted(d) {
+  toast(`🎉 Video ${d.output_filename} nâng cấp thành công trong ${d.elapsed_seconds}s!`, 'success');
+  document.getElementById('videoProgressCard').style.display = 'none';
+  document.getElementById('btnStartVideo').style.display = '';
+  document.getElementById('btnPauseVideo').style.display = 'none';
+  document.getElementById('btnResumeVideo').style.display = 'none';
+  document.getElementById('btnCancelVideo').style.display = 'none';
+
+  // Show player
+  const playerCard = document.getElementById('videoPlayerCard');
+  playerCard.style.display = 'flex';
+  const player = document.getElementById('videoPlayer');
+  if (player && currentVideoJobId) {
+    player.src = `/api/video/jobs/${currentVideoJobId}/download?t=${Date.now()}`;
+  }
+  const dlBtn = document.getElementById('btnDownloadVideo');
+  if (dlBtn && currentVideoJobId) {
+    dlBtn.href = `/api/video/jobs/${currentVideoJobId}/download`;
+    dlBtn.download = d.output_filename || 'video_4x.mp4';
+  }
+  loadVideoJobs();
+}
+
+function onVideoError(d) {
+  toast(`❌ Lỗi nâng cấp video: ${d.error}`, 'error');
+  document.getElementById('btnStartVideo').style.display = '';
+  document.getElementById('btnPauseVideo').style.display = 'none';
+  document.getElementById('btnResumeVideo').style.display = 'none';
+  document.getElementById('btnCancelVideo').style.display = 'none';
+  loadVideoJobs();
+}
+
+function exportVideoReport(fmt) {
+  if (!currentVideoJobId) {
+    toast('Chưa có video nào để xuất báo cáo', 'warning');
+    return;
+  }
+  window.open(`/api/video/jobs/${currentVideoJobId}/report?format=${fmt}`, '_blank');
+}
+
+async function loadVideoJobs() {
+  try {
+    const r = await fetch('/api/video/jobs?limit=20');
+    const d = await r.json();
+    renderVideoJobs(d.jobs || []);
+  } catch (e) {
+    console.error('Failed to load video jobs', e);
+  }
+}
+
+function renderVideoJobs(jobs) {
+  const tbody = document.getElementById('videoJobsBody');
+  if (!tbody) return;
+
+  if (!jobs || jobs.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="6" style="text-align:center; color:var(--text-muted); padding:1rem;">Chưa có video nào. Kéo thả video để nâng cấp.</td></tr>';
+    return;
+  }
+
+  tbody.innerHTML = jobs.map(j => {
+    const isCompleted = j.status === 'COMPLETED';
+    const isPaused = j.status === 'PAUSED';
+    const isProcessing = j.status === 'PROCESSING';
+
+    let actions = '';
+    if (isCompleted) {
+      actions += `<a class="btn btn-sm btn-secondary" href="/api/video/jobs/${j.id}/download" download title="Tải video">📥 Tải</a> `;
+      actions += `<button class="btn btn-sm btn-secondary" onclick="previewSavedVideo('${j.id}')" title="Xem trước">▶ Xem</button> `;
+      actions += `<button class="btn btn-sm btn-secondary" onclick="window.open('/api/video/jobs/${j.id}/report?format=html', '_blank')" title="Báo cáo">📊</button> `;
+    } else if (isPaused) {
+      actions += `<button class="btn btn-sm btn-primary" onclick="resumeVideoById('${j.id}')">▶ Tiếp tục</button> `;
+    }
+    actions += `<button class="btn btn-sm btn-danger" onclick="deleteVideoJob('${j.id}')" title="Xóa">✕</button>`;
+
+    const statusBadge = `<span class="badge ${isCompleted ? 'badge-success' : (j.status === 'FAILED' ? 'badge-danger' : 'badge-info')}">${j.status}</span>`;
+
+    return `
+      <tr>
+        <td style="font-weight:600; max-width:200px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" title="${escHtml(j.filename)}">${escHtml(j.filename)}</td>
+        <td>${j.source_width}x${j.source_height} ➜ <strong>${j.target_width}x${j.target_height}</strong></td>
+        <td>${j.processed_frames} / ${j.total_frames}</td>
+        <td>${j.elapsed_seconds ? j.elapsed_seconds.toFixed(1) + 's' : '-'}</td>
+        <td>${statusBadge}</td>
+        <td>${actions}</td>
+      </tr>
+    `;
+  }).join('');
+}
+
+function previewSavedVideo(jobId) {
+  currentVideoJobId = jobId;
+  const playerCard = document.getElementById('videoPlayerCard');
+  playerCard.style.display = 'flex';
+  const player = document.getElementById('videoPlayer');
+  if (player) {
+    player.src = `/api/video/jobs/${jobId}/download?t=${Date.now()}`;
+    player.play();
+  }
+  const dlBtn = document.getElementById('btnDownloadVideo');
+  if (dlBtn) {
+    dlBtn.href = `/api/video/jobs/${jobId}/download`;
+  }
+}
+
+async function resumeVideoById(jobId) {
+  currentVideoJobId = jobId;
+  await resumeActiveVideo();
+}
+
+async function deleteVideoJob(jobId) {
+  if (!confirm('Bạn có chắc chắn muốn xóa video này và dọn dẹp không gian làm việc?')) return;
+  try {
+    await fetch(`/api/video/jobs/${jobId}`, { method: 'DELETE' });
+    toast('Đã xóa tác vụ video thành công', 'success');
+    loadVideoJobs();
+  } catch (e) {
+    toast('Lỗi xóa video: ' + e.message, 'error');
+  }
+}
+
+// Initialize video drag and drop on load
+</script>
+</body>
+</html>

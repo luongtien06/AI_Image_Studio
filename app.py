@@ -19,13 +19,15 @@ import subprocess
 import threading
 import urllib.request
 import shutil
+import ctypes
 from datetime import datetime
 from pathlib import Path
 from logging.handlers import RotatingFileHandler
+from typing import Any, Dict, List, Optional, Set, Tuple, Union
 
 from flask import (
     Flask, render_template, request, jsonify, send_file, send_from_directory,
-    Response, stream_with_context
+    Response, stream_with_context, make_response
 )
 from PIL import Image, UnidentifiedImageError
 
@@ -139,8 +141,10 @@ ALLOWED_EXTENSIONS = set(ext.lower() for ext in APP_CONFIG["security"]["allowed_
 ALLOWED_IMAGE_FORMATS = set(fmt.upper() for fmt in APP_CONFIG["security"]["allowed_image_formats"])
 BLOCKED_SYSTEM_FILES = set(fn.lower() for fn in APP_CONFIG["security"]["block_system_files"])
 MAX_FILE_SIZE = APP_CONFIG["security"]["max_file_size_mb"] * 1024 * 1024
-MAX_PIXELS = int(APP_CONFIG["security"].get("max_pixels", 25000000))
-UPLOAD_MAX_PIXELS = int(APP_CONFIG["security"].get("upload_max_pixels", 150000000))
+INPUT_MAX_PIXELS = int(APP_CONFIG["security"].get("upload_max_pixels", 150000000))
+OUTPUT_MAX_PIXELS = int(APP_CONFIG["security"].get("output_max_pixels", APP_CONFIG["security"].get("pillow_max_image_pixels", 250000000)))
+UPLOAD_MAX_PIXELS = INPUT_MAX_PIXELS
+MAX_PIXELS = INPUT_MAX_PIXELS
 PILLOW_MAX_IMAGE_PIXELS = int(APP_CONFIG["security"].get("pillow_max_image_pixels", 250000000))
 try:
     from PIL import Image as _PIL_Image
@@ -179,6 +183,16 @@ video_storage_mgr = VideoStorageManager(base_workspaces_dir=VIDEO_WORKSPACES_DIR
 
 def find_working_python():
     """Dynamically determine Python executable with PyTorch & RealESRGAN dependencies."""
+    # Fast path: check if current interpreter already has required dependencies
+    try:
+        import torch
+        import basicsr
+        import cv2
+        import PIL
+        return sys.executable
+    except Exception:
+        pass
+
     candidates = []
     
     # 1. Current running interpreter
@@ -253,6 +267,24 @@ sse_lock = threading.Lock()
 
 processing_queue = queue.Queue()
 cancel_flag = threading.Event()
+_job_cancel_events: Dict[str, threading.Event] = {}
+_job_cancel_lock = threading.Lock()
+_startup_queue_restored = False
+
+
+def get_job_cancel_event(job_id: str) -> threading.Event:
+    with _job_cancel_lock:
+        if job_id not in _job_cancel_events:
+            _job_cancel_events[job_id] = threading.Event()
+        return _job_cancel_events[job_id]
+
+
+def signal_job_cancellation(job_id: str):
+    with _job_cancel_lock:
+        if job_id in _job_cancel_events:
+            _job_cancel_events[job_id].set()
+
+
 is_processing = threading.Event()
 current_process = None
 current_process_lock = threading.Lock()
@@ -372,9 +404,15 @@ def load_history(resolve_paths=True):
     return [resolve_history_entry(item) for item in raw_history]
 
 def save_history_entry(entry):
-    """Atomically save history entry with backup and relative path support."""
+    """Atomically save history entry with backup, relative path support, and duplicate prevention."""
     with history_lock:
         raw_history = load_history(resolve_paths=False)
+        jid = entry.get('job_id')
+        st = entry.get('status')
+        if jid:
+            for item in raw_history[:25]:
+                if item.get('job_id') == jid and item.get('status') == st:
+                    return
         raw_history.insert(0, entry)
         raw_history = raw_history[:HISTORY_MAX]
 
@@ -505,6 +543,100 @@ def safe_path(path_str, allow_outside_base=True):
         return None
 
 # ═══════════════════════════════════════════════════════════════
+# Resource Safety & System Diagnostics
+# ═══════════════════════════════════════════════════════════════
+
+class _MEMORYSTATUSEX(ctypes.Structure):
+    _fields_ = [
+        ('dwLength', ctypes.c_ulong),
+        ('dwMemoryLoad', ctypes.c_ulong),
+        ('ullTotalPhys', ctypes.c_ulonglong),
+        ('ullAvailPhys', ctypes.c_ulonglong),
+        ('ullTotalPageFile', ctypes.c_ulonglong),
+        ('ullAvailPageFile', ctypes.c_ulonglong),
+        ('ullTotalVirtual', ctypes.c_ulonglong),
+        ('ullAvailVirtual', ctypes.c_ulonglong),
+        ('ullAvailExtendedVirtual', ctypes.c_ulonglong),
+    ]
+
+def get_available_ram_bytes() -> int:
+    """Return available physical RAM in bytes using standard library."""
+    try:
+        stat = _MEMORYSTATUSEX()
+        stat.dwLength = ctypes.sizeof(_MEMORYSTATUSEX)
+        if ctypes.windll.kernel32.GlobalMemoryStatusEx(ctypes.byref(stat)):
+            return int(stat.ullAvailPhys)
+    except Exception:
+        pass
+    try:
+        if hasattr(os, 'sysconf') and 'SC_AVPHYS_PAGES' in os.sysconf_names:
+            return int(os.sysconf('SC_AVPHYS_PAGES') * os.sysconf('SC_PAGE_SIZE'))
+    except Exception:
+        pass
+    return 4 * 1024 * 1024 * 1024  # Fallback: 4GB default if undetectable
+
+
+def check_output_resource_safety(
+    projected_width: int,
+    projected_height: int,
+    output_dir: Union[str, Path],
+    scale: int = 4
+) -> Tuple[bool, Optional[str]]:
+    """
+    Validate pre-inference output resource safety:
+    1. Output pixel limit vs OUTPUT_MAX_PIXELS (250 MP).
+    2. Available RAM safety budget (headroom for full uncompressed buffer + encoding).
+    3. Output filesystem free disk space.
+    Returns (is_safe: bool, error_reason: Optional[str]).
+    """
+    proj_pixels = projected_width * projected_height
+    if proj_pixels <= 0:
+        return False, "Invalid projected output dimensions"
+
+    # 1. Output pixel limit check
+    if proj_pixels > OUTPUT_MAX_PIXELS:
+        return False, (
+            f"Output pixel limit exceeded: projected {projected_width}x{projected_height} "
+            f"({proj_pixels:,} pixels, max allowed: {OUTPUT_MAX_PIXELS:,})"
+        )
+
+    # 2. RAM safety budget check
+    # Uncompressed raw buffer: 4 bytes per pixel.
+    # Working overhead with direct uint8 CPU quantization ~ 1.5x raw buffer.
+    import gc
+    gc.collect()
+    raw_buffer_bytes = proj_pixels * 4
+    estimated_working_ram = int(raw_buffer_bytes * 1.5)
+    safety_margin_ram = 512 * 1024 * 1024  # 512 MB OS headroom
+    required_ram = estimated_working_ram + safety_margin_ram
+
+    avail_ram = get_available_ram_bytes()
+    if avail_ram < required_ram:
+        return False, (
+            f"Insufficient RAM for output: projected output requires ~{required_ram // (1024*1024)} MB RAM "
+            f"(including 512 MB safe headroom), but only {avail_ram // (1024*1024)} MB is available"
+        )
+
+    # 3. Disk space safety check
+    # Estimated compressed output size on disk (at least 50 MB, or raw_buffer_bytes // 2 for uncompressed PNG)
+    estimated_disk_need = max(50 * 1024 * 1024, raw_buffer_bytes // 2)
+    disk_safety_headroom = 500 * 1024 * 1024  # 500 MB minimum free disk after write
+    try:
+        disk_stat = shutil.disk_usage(str(output_dir))
+        free_disk = disk_stat.free
+        if free_disk < (estimated_disk_need + disk_safety_headroom):
+            return False, (
+                f"Insufficient disk space for output: output location requires at least "
+                f"{(estimated_disk_need + disk_safety_headroom) // (1024*1024)} MB free space, "
+                f"but only {free_disk // (1024*1024)} MB is available"
+            )
+    except Exception as e:
+        logger.warning(f"Could not verify disk usage for {output_dir}: {e}")
+
+    return True, None
+
+
+# ═══════════════════════════════════════════════════════════════
 # Deep Image Verification (Pillow) & Categorized Results
 # ═══════════════════════════════════════════════════════════════
 
@@ -527,10 +659,10 @@ class ValidationResult(tuple):
         self.category = category
 
 
-def validate_image_file(file_path, max_pixels=None):
+def validate_image_file(file_path, max_pixels=None, role="input"):
     """
     Deep verification of image file using Pillow:
-    1. Checks file existence & size limits.
+    1. Checks file existence & size limits (differentiated for input vs output).
     2. Excludes desktop.ini, hidden files, non-whitelisted extensions.
     3. Verifies container structure with verify().
     4. Re-opens image, checks dimensions (w > 0, h > 0, w*h <= limit_pixels).
@@ -556,10 +688,11 @@ def validate_image_file(file_path, max_pixels=None):
         size = p.stat().st_size
         if size == 0:
             return ValidationResult(False, "File is empty (0 bytes)", (0, 0), "", category="empty")
-        if size > MAX_FILE_SIZE:
+        effective_max_size = max(MAX_FILE_SIZE * 5, 500 * 1024 * 1024) if role == "output" else MAX_FILE_SIZE
+        if size > effective_max_size:
             return ValidationResult(
                 False,
-                f"File exceeds maximum allowed size ({MAX_FILE_SIZE // (1024*1024)} MB)",
+                f"File exceeds maximum allowed size ({effective_max_size // (1024*1024)} MB)",
                 (0, 0),
                 "",
                 category="too_large"
@@ -584,7 +717,7 @@ def validate_image_file(file_path, max_pixels=None):
         return ValidationResult(False, f"Image verification failed ({type(err).__name__}: {err})", (0, 0), "", category="corrupt")
 
     # Step 2: Re-open after verify(), check dimensions & pixel limit, then full decode with load()
-    limit_pixels = max_pixels if max_pixels is not None else MAX_PIXELS
+    limit_pixels = max_pixels if max_pixels is not None else (OUTPUT_MAX_PIXELS if role == "output" else INPUT_MAX_PIXELS)
     try:
         with Image.open(p) as img:
             fmt = (img.format or "").upper()
@@ -708,7 +841,8 @@ def run_startup_checks():
     # Initialize Persistent In-Memory AI Worker
     if system_status['model_ok']:
         try:
-            worker = get_ai_worker(base_dir=BASE_DIR)
+            use_subproc = os.environ.get("REALESRGAN_SUBPROCESS", "1") == "1"
+            worker = get_ai_worker(base_dir=BASE_DIR, use_subprocess=use_subproc)
             worker.initialize_model()
             system_status['worker_status'] = worker.state
             logger.info(f"Persistent AI Worker initialized: status={worker.state}")
@@ -718,7 +852,9 @@ def run_startup_checks():
 
     # Phase 3: Startup Crash Recovery via SQLite
     try:
-        rec_report = job_mgr.recover_on_startup(validator_func=validate_image_file)
+        rec_report = job_mgr.recover_on_startup(
+            validator_func=lambda p: validate_image_file(p, max_pixels=OUTPUT_MAX_PIXELS, role="output")
+        )
         system_status['recovery'] = rec_report
         logger.info(f"Phase 3 Crash Recovery completed: {rec_report}")
 
@@ -766,6 +902,24 @@ def run_startup_checks():
                     'output_size': r.get('output_size', 0),
                     'source': 'sqlite'
                 }
+
+        # Phase 3 Queue Restoration: Restore eligible QUEUED jobs into processing_queue exactly once
+        global _startup_queue_restored
+        if not _startup_queue_restored:
+            eligible_ids = rec_report.get("eligible_job_ids", [])
+            with jobs_lock:
+                pending_ids = [jid for jid in eligible_ids if jid in jobs and jobs[jid]['status'] == 'pending']
+            if pending_ids:
+                logger.info(f"Startup Queue Restoration: Enqueueing {len(pending_ids)} recovered pending jobs.")
+                processing_queue.put({
+                    'job_ids': pending_ids,
+                    'tile_mode': APP_CONFIG["inference"].get("default_tile_mode", "auto"),
+                    'tile_size': APP_CONFIG["inference"].get("default_tile", 128),
+                    'export_format': APP_CONFIG["export"].get("default_format", "auto"),
+                    'quality': APP_CONFIG["export"].get("default_quality", 95),
+                    'output_dir': str(session_output_dir)
+                })
+            _startup_queue_restored = True
     except Exception as e:
         logger.error(f"Startup crash recovery failed: {e}")
 
@@ -854,15 +1008,101 @@ def process_single_image(job):
         })
         return False
 
+    # Package 2: Recheck source validity immediately before inference
+    if not valid_in.is_file() or not os.access(str(valid_in), os.R_OK):
+        error_msg = f"SOURCE_FILE_MISSING: Source file does not exist, is a directory, or is unreadable: {raw_input_path}"
+        logger.error(f"Source file check failed for job {job.get('filename')}: {error_msg}")
+        job_logger.log_error(job_id, error_msg)
+        job_mgr.transition_status(job_id, STATUS_FAILED, error_message=error_msg, force=True)
+        with jobs_lock:
+            jobs[job_id]['status'] = 'error'
+            jobs[job_id]['raw_status'] = STATUS_FAILED
+            jobs[job_id]['error'] = error_msg
+            jobs[job_id]['start_time'] = time.time()
+            jobs[job_id]['end_time'] = time.time()
+            jobs[job_id]['elapsed'] = 0.0
+        broadcast_event('job_error', {
+            'job_id': job_id,
+            'filename': job.get('filename', 'unknown'),
+            'status': 'error',
+            'elapsed': 0.0,
+            'error': error_msg,
+            'is_oom': False
+        })
+        save_history_entry({
+            'job_id': job_id,
+            'filename': job.get('filename', 'unknown'),
+            'status': 'error',
+            'input_path': str(raw_input_path),
+            'output_path': '',
+            'rel_input_path': None,
+            'rel_output_path': None,
+            'tile_size': tile_used,
+            'start_time': datetime.now().isoformat(),
+            'end_time': datetime.now().isoformat(),
+            'elapsed_seconds': 0.0,
+            'error': error_msg,
+            'input_size': 0,
+            'output_size': 0,
+            'input_dimensions': '',
+            'output_dimensions': ''
+        })
+        return False
+
     # Deep verification of image before launching inference
     job_logger.log_step(job_id, "VALIDATING", "Validating image integrity and format")
     job_mgr.transition_status(job_id, STATUS_VALIDATING, force=True)
-    is_valid_img, val_reason, (w, h), _ = validate_image_file(valid_in)
+    is_valid_img, val_reason, (w, h), _ = validate_image_file(valid_in, max_pixels=INPUT_MAX_PIXELS, role="input")
     if not is_valid_img:
         error_msg = f"Invalid image: {val_reason}"
         logger.error(f"Image verification failed for {valid_in.name}: {val_reason}")
         job_logger.log_error(job_id, error_msg)
         job_mgr.schedule_retry(job_id, error_msg)  # Non-retryable -> FAILED
+        with jobs_lock:
+            jobs[job_id]['status'] = 'error'
+            jobs[job_id]['raw_status'] = STATUS_FAILED
+            jobs[job_id]['error'] = error_msg
+            jobs[job_id]['start_time'] = time.time()
+            jobs[job_id]['end_time'] = time.time()
+            jobs[job_id]['elapsed'] = 0.0
+        broadcast_event('job_error', {
+            'job_id': job_id,
+            'filename': job.get('filename', 'unknown'),
+            'status': 'error',
+            'elapsed': 0.0,
+            'error': error_msg,
+            'is_oom': False
+        })
+        save_history_entry({
+            'job_id': job_id,
+            'filename': job.get('filename', 'unknown'),
+            'status': 'error',
+            'input_path': str(valid_in),
+            'output_path': '',
+            'rel_input_path': None,
+            'rel_output_path': None,
+            'tile_size': tile_used,
+            'start_time': datetime.now().isoformat(),
+            'end_time': datetime.now().isoformat(),
+            'elapsed_seconds': 0.0,
+            'error': error_msg,
+            'input_size': valid_in.stat().st_size if valid_in.exists() else 0,
+            'output_size': 0,
+            'input_dimensions': f"{w}x{h}" if w and h else "",
+            'output_dimensions': ''
+        })
+        return False
+
+    # Pre-inference Output Resource Safety Check (Package 2.1)
+    scale_factor = 4
+    proj_w = w * scale_factor
+    proj_h = h * scale_factor
+    safe, res_error = check_output_resource_safety(proj_w, proj_h, valid_out, scale=scale_factor)
+    if not safe:
+        error_msg = res_error
+        logger.error(f"Pre-inference resource check failed for job {job_id} ({valid_in.name}): {error_msg}")
+        job_logger.log_error(job_id, error_msg)
+        job_mgr.schedule_retry(job_id, error_msg)  # Non-retryable -> transitions to FAILED
         with jobs_lock:
             jobs[job_id]['status'] = 'error'
             jobs[job_id]['raw_status'] = STATUS_FAILED
@@ -914,7 +1154,8 @@ def process_single_image(job):
         'status': 'processing'
     })
 
-    worker = get_ai_worker(base_dir=BASE_DIR)
+    use_subproc = os.environ.get("REALESRGAN_SUBPROCESS", "1") == "1"
+    worker = get_ai_worker(base_dir=BASE_DIR, use_subprocess=use_subproc)
 
     def on_progress(pct, detail):
         job_logger.log_progress(job_id, pct, detail)
@@ -928,7 +1169,8 @@ def process_single_image(job):
         })
 
     def is_cancelled_check():
-        return cancel_flag.is_set() or job_mgr.is_cancellation_requested(job_id)
+        evt = _job_cancel_events.get(job_id)
+        return (evt is not None and evt.is_set()) or cancel_flag.is_set() or job_mgr.is_cancellation_requested(job_id)
 
     # Log GPU status
     try:
@@ -957,17 +1199,38 @@ def process_single_image(job):
         if is_cancelled_check():
             error_msg = "Job cancelled by user request"
             job_logger.log_cancelled(job_id, error_msg)
-            job_mgr.transition_status(job_id, STATUS_CANCELLED, force=True)
+            job_mgr.transition_status(job_id, STATUS_CANCELLED)
+            st_time = time.time()
             with jobs_lock:
                 jobs[job_id]['status'] = 'cancelled'
                 jobs[job_id]['raw_status'] = STATUS_CANCELLED
                 jobs[job_id]['error'] = error_msg
                 jobs[job_id]['end_time'] = time.time()
+                st_time = jobs[job_id].get('start_time') or st_time
+                elapsed = time.time() - st_time
             broadcast_event('job_error', {
                 'job_id': job_id,
                 'filename': job['filename'],
                 'status': 'cancelled',
                 'error': error_msg
+            })
+            save_history_entry({
+                'job_id': job_id,
+                'filename': job['filename'],
+                'status': 'cancelled',
+                'input_path': str(input_path),
+                'output_path': '',
+                'rel_input_path': None,
+                'rel_output_path': None,
+                'tile_size': tile_used,
+                'start_time': datetime.fromtimestamp(st_time).isoformat(),
+                'end_time': datetime.now().isoformat(),
+                'elapsed_seconds': round(elapsed, 1),
+                'error': error_msg,
+                'input_size': input_path.stat().st_size if input_path.exists() else 0,
+                'output_size': 0,
+                'input_dimensions': job.get('dimensions', ''),
+                'output_dimensions': ''
             })
             return False
 
@@ -998,19 +1261,39 @@ def process_single_image(job):
         except Exception as e:
             error_msg = str(e)
             elapsed = time.time() - start_time
-            if "cancelled" in error_msg.lower():
+            if "cancelled" in error_msg.lower() or is_cancelled_check():
                 job_logger.log_cancelled(job_id, error_msg)
-                job_mgr.transition_status(job_id, STATUS_CANCELLED, force=True)
+                job_mgr.transition_status(job_id, STATUS_CANCELLED)
+                st_time = time.time()
                 with jobs_lock:
                     jobs[job_id]['status'] = 'cancelled'
                     jobs[job_id]['raw_status'] = STATUS_CANCELLED
                     jobs[job_id]['error'] = error_msg
                     jobs[job_id]['end_time'] = time.time()
+                    st_time = jobs[job_id].get('start_time') or st_time
                 broadcast_event('job_error', {
                     'job_id': job_id,
                     'filename': job['filename'],
                     'status': 'cancelled',
                     'error': error_msg
+                })
+                save_history_entry({
+                    'job_id': job_id,
+                    'filename': job['filename'],
+                    'status': 'cancelled',
+                    'input_path': str(input_path),
+                    'output_path': '',
+                    'rel_input_path': None,
+                    'rel_output_path': None,
+                    'tile_size': tile_used,
+                    'start_time': datetime.fromtimestamp(st_time).isoformat(),
+                    'end_time': datetime.now().isoformat(),
+                    'elapsed_seconds': round(elapsed, 1),
+                    'error': error_msg,
+                    'input_size': input_path.stat().st_size if input_path.exists() else 0,
+                    'output_size': 0,
+                    'input_dimensions': job.get('dimensions', ''),
+                    'output_dimensions': ''
                 })
                 return False
 
@@ -1028,7 +1311,46 @@ def process_single_image(job):
                     jobs[job_id]['retry_count'] = new_retries
                     jobs[job_id]['error'] = error_msg
                 time.sleep(backoff_time)
-                job_mgr.transition_status(job_id, STATUS_PROCESSING, force=True)
+
+                # Recheck cancellation after retry backoff before proceeding to next attempt
+                if is_cancelled_check():
+                    cancel_reason = "Job cancelled during retry backoff"
+                    job_logger.log_cancelled(job_id, cancel_reason)
+                    job_mgr.transition_status(job_id, STATUS_CANCELLED)
+                    st_time = time.time()
+                    with jobs_lock:
+                        jobs[job_id]['status'] = 'cancelled'
+                        jobs[job_id]['raw_status'] = STATUS_CANCELLED
+                        jobs[job_id]['error'] = cancel_reason
+                        jobs[job_id]['end_time'] = time.time()
+                        st_time = jobs[job_id].get('start_time') or st_time
+                    broadcast_event('job_error', {
+                        'job_id': job_id,
+                        'filename': job['filename'],
+                        'status': 'cancelled',
+                        'error': cancel_reason
+                    })
+                    save_history_entry({
+                        'job_id': job_id,
+                        'filename': job['filename'],
+                        'status': 'cancelled',
+                        'input_path': str(input_path),
+                        'output_path': '',
+                        'rel_input_path': None,
+                        'rel_output_path': None,
+                        'tile_size': tile_used,
+                        'start_time': datetime.fromtimestamp(st_time).isoformat(),
+                        'end_time': datetime.now().isoformat(),
+                        'elapsed_seconds': round(elapsed, 1),
+                        'error': cancel_reason,
+                        'input_size': input_path.stat().st_size if input_path.exists() else 0,
+                        'output_size': 0,
+                        'input_dimensions': job.get('dimensions', ''),
+                        'output_dimensions': ''
+                    })
+                    return False
+
+                job_mgr.transition_status(job_id, STATUS_PROCESSING)
                 with jobs_lock:
                     jobs[job_id]['status'] = 'processing'
                     jobs[job_id]['raw_status'] = STATUS_PROCESSING
@@ -1040,14 +1362,28 @@ def process_single_image(job):
     if not output_found and error_msg is None:
         error_msg = "Output file not found after processing."
 
+    # Validate output image if output file was created
+    if output_found and error_msg is None:
+        valid, val_reason, (out_w, out_h), fmt = validate_image_file(expected_output, max_pixels=OUTPUT_MAX_PIXELS, role="output")
+        if not valid:
+            error_msg = f"Generated output validation failed: {val_reason}"
+            logger.error(f"Output verification failed for job {job_id} ({expected_output}): {val_reason}")
+            try:
+                expected_output.unlink(missing_ok=True)
+            except Exception:
+                pass
+            expected_output = None
+            output_found = False
+
     # Update state
     if error_msg:
         job_logger.log_error(job_id, error_msg)
-        job_mgr.transition_status(job_id, STATUS_FAILED, error_message=error_msg, force=True)
+        job_mgr.transition_status(job_id, STATUS_FAILED, error_message=error_msg)
         with jobs_lock:
             jobs[job_id]['status'] = 'error'
             jobs[job_id]['raw_status'] = STATUS_FAILED
             jobs[job_id]['error'] = error_msg
+            jobs[job_id]['output_path'] = None
             jobs[job_id]['is_oom'] = is_oom
             jobs[job_id]['end_time'] = time.time()
             jobs[job_id]['elapsed'] = round(elapsed, 1)
@@ -1055,8 +1391,7 @@ def process_single_image(job):
         status = 'error'
         event_type = 'job_error'
     else:
-        valid, _, (out_w, out_h), _ = validate_image_file(expected_output)
-        dim_str = f"{out_w}x{out_h}" if valid else output_dimensions
+        dim_str = f"{out_w}x{out_h}"
         out_bytes = expected_output.stat().st_size
         job_mgr.transition_status(
             job_id,
@@ -1065,8 +1400,7 @@ def process_single_image(job):
             output_dimensions=dim_str,
             output_size=out_bytes,
             elapsed_seconds=round(elapsed, 1),
-            tile_used=tile_used,
-            force=True
+            tile_used=tile_used
         )
         job_logger.log_complete(job_id, elapsed, str(expected_output), dim_str, out_bytes, tile_used)
         with jobs_lock:
@@ -1132,39 +1466,43 @@ def process_single_image(job):
     return not bool(error_msg)
 
 def processing_worker():
-    """Background worker that sequentially processes jobs from queue."""
+    """Background worker that sequentially processes jobs from processing_queue."""
     while True:
         try:
             job_data = processing_queue.get(block=True)
-            if job_data is None:
-                break
+        except Exception as e:
+            logger.error(f"Error getting item from processing_queue: {e}")
+            break
 
-            job_ids = job_data['job_ids']
+        if job_data is None:
+            # Sentinel shutdown signal
+            processing_queue.task_done()
+            logger.info("Processing worker received shutdown sentinel; exiting cleanly.")
+            break
+
+        try:
+            is_processing.set()
+            job_ids = job_data.get('job_ids', [])
             tile_size = job_data.get('tile_size', 128)
             tile_mode = job_data.get('tile_mode', 'auto')
             export_format = job_data.get('export_format', 'auto')
             quality = job_data.get('quality', 95)
             out_dir = job_data.get('output_dir', session_output_dir)
 
-            is_processing.set()
-            cancel_flag.clear()
             completed = 0
             errors = 0
+            cancelled = False
 
             for i, job_id in enumerate(job_ids):
-                if cancel_flag.is_set():
+                evt = _job_cancel_events.get(job_id)
+                if cancel_flag.is_set() or (evt is not None and evt.is_set()) or job_mgr.is_cancellation_requested(job_id):
                     job_mgr.cancel_all_pending()
                     with jobs_lock:
                         for remaining_id in job_ids[i:]:
                             if remaining_id in jobs and jobs[remaining_id]['status'] in ('pending', 'retry'):
                                 jobs[remaining_id]['status'] = 'cancelled'
                                 jobs[remaining_id]['raw_status'] = STATUS_CANCELLED
-                    broadcast_event('queue_complete', {
-                        'total': len(job_ids),
-                        'completed': completed,
-                        'errors': errors,
-                        'cancelled': True
-                    })
+                    cancelled = True
                     break
 
                 with jobs_lock:
@@ -1185,20 +1523,22 @@ def processing_worker():
                     completed += 1
                 else:
                     errors += 1
-            else:
-                broadcast_event('queue_complete', {
-                    'total': len(job_ids),
-                    'completed': completed,
-                    'errors': errors,
-                    'cancelled': False
-                })
 
-            is_processing.clear()
-            processing_queue.task_done()
+            broadcast_event('queue_complete', {
+                'total': len(job_ids),
+                'completed': completed,
+                'errors': errors,
+                'cancelled': cancelled
+            })
+
+            if cancelled:
+                cancel_flag.clear()
 
         except Exception as e:
-            logger.error(f"Worker exception: {e}")
+            logger.error(f"Worker exception during batch execution: {e}", exc_info=True)
+        finally:
             is_processing.clear()
+            processing_queue.task_done()
 
 worker_thread = threading.Thread(target=processing_worker, daemon=True)
 worker_thread.start()
@@ -1235,6 +1575,9 @@ def api_config():
         "security": {
             "max_file_size_mb": APP_CONFIG["security"]["max_file_size_mb"],
             "max_pixels": MAX_PIXELS,
+            "upload_max_pixels": UPLOAD_MAX_PIXELS,
+            "input_max_pixels": INPUT_MAX_PIXELS,
+            "output_max_pixels": OUTPUT_MAX_PIXELS,
             "allowed_extensions": list(ALLOWED_EXTENSIONS)
         }
     })
@@ -1312,8 +1655,8 @@ def api_upload():
 
         f.save(str(dest_path))
 
-        # Deep verification using Pillow with UPLOAD_MAX_PIXELS (allows high-res & reprocessed images)
-        res = validate_image_file(dest_path, max_pixels=UPLOAD_MAX_PIXELS)
+        # Deep verification using Pillow with INPUT_MAX_PIXELS (allows high-res & reprocessed images)
+        res = validate_image_file(dest_path, max_pixels=INPUT_MAX_PIXELS, role="input")
         is_valid, reason, (width, height), fmt = res
         category = getattr(res, 'category', 'corrupt')
         if not is_valid:
@@ -1333,16 +1676,50 @@ def api_upload():
 
         file_size = dest_path.stat().st_size
 
-        # Check for duplicates across current jobs
-        is_dup = False
+        # Check for duplicate source files across current jobs
+        existing_dup = None
         with jobs_lock:
             for j in jobs.values():
-                if (j.get('filename') == raw_filename or j.get('filename') == dest_filename) and j.get('file_size') == file_size:
-                    is_dup = True
+                if j.get('input_path') == str(dest_path):
+                    existing_dup = j
                     break
+                if (j.get('filename') == raw_filename or j.get('filename') == dest_filename) and j.get('file_size') == file_size:
+                    # Compare content hash if size matches
+                    try:
+                        p_existing = Path(j.get('input_path', ''))
+                        if p_existing.is_file() and p_existing.stat().st_size == file_size:
+                            h_dest = hashlib.sha256(dest_path.read_bytes()).hexdigest()
+                            h_existing = hashlib.sha256(p_existing.read_bytes()).hexdigest()
+                            if h_dest == h_existing:
+                                existing_dup = j
+                                break
+                    except Exception:
+                        existing_dup = j
+                        break
 
-        if is_dup:
+        if existing_dup:
             summary['duplicates'] += 1
+            # Clean up redundant duplicate staged file to prevent disk clutter
+            try:
+                dest_path.unlink(missing_ok=True)
+            except Exception:
+                pass
+
+            results.append({
+                'job_id': existing_dup['id'],
+                'filename': existing_dup.get('filename', dest_filename),
+                'width': existing_dup.get('width', width),
+                'height': existing_dup.get('height', height),
+                'dimensions': existing_dup.get('dimensions', f"{width}x{height}"),
+                'file_size': existing_dup.get('file_size', file_size),
+                'file_size_human': existing_dup.get('file_size_human', human_size(file_size)),
+                'status': existing_dup.get('status', 'pending'),
+                'is_duplicate': True,
+                'thumbnail_url': f"/api/thumbnail/{existing_dup['id']}",
+                'source': existing_dup.get('source', 'upload')
+            })
+            summary['valid'] += 1
+            continue
 
         job_id = str(uuid.uuid4())
         thumb_path = THUMBNAIL_DIR / f"{job_id}.jpg"
@@ -1369,7 +1746,7 @@ def api_upload():
             'elapsed': None,
             'tile_size': APP_CONFIG["inference"]["default_tile"],
             'thumbnail_url': f"/api/thumbnail/{job_id}",
-            'is_duplicate': is_dup,
+            'is_duplicate': False,
             'source': 'upload'
         }
 
@@ -1397,18 +1774,19 @@ def api_upload():
             'file_size': file_size,
             'file_size_human': human_size(file_size),
             'status': 'pending',
-            'is_duplicate': is_dup,
+            'is_duplicate': False,
+            'source': 'upload',
             'thumbnail_url': f"/api/thumbnail/{job_id}"
         })
         summary['valid'] += 1
 
     logger.info(f"Accepted {len(results)} valid files into {UPLOAD_DIR} (summary: {summary})")
-    return jsonify({'files': results, 'summary': summary, 'errors': errors})
+    return jsonify({'status': 'success', 'files': results, 'jobs': results, 'summary': summary, 'errors': errors})
 
 @app.route('/api/select-folder', methods=['POST'])
 def api_select_folder():
     data = request.get_json() or {}
-    folder_str = data.get('path')
+    folder_str = data.get('path') or data.get('folder_path')
     if not folder_str:
         folder_path = UPLOAD_DIR
         folder_path.mkdir(parents=True, exist_ok=True)
@@ -1418,42 +1796,57 @@ def api_select_folder():
             return jsonify({'error': 'Invalid or restricted folder path'}), 403
 
         if not folder_path.is_dir():
-            return jsonify({'error': 'Thư mục không tồn tại trên hệ thống.'}), 404
+            return jsonify({'error': 'Selected directory does not exist.'}), 404
 
         if not os.access(str(folder_path), os.R_OK):
-            return jsonify({'error': 'Không có quyền đọc thư mục này.'}), 403
+            return jsonify({'error': 'Permission denied reading selected directory.'}), 403
+
+    discovered_files = []
+    try:
+        # Recursive walk to discover images in folder and nested subfolders
+        for root, dirs, files in os.walk(str(folder_path)):
+            dirs[:] = [d for d in dirs if not d.startswith('.')]
+            for f in sorted(files):
+                if f.startswith('.'):
+                    continue
+                discovered_files.append(Path(root) / f)
+    except PermissionError:
+        return jsonify({'error': 'Permission denied reading directory'}), 403
 
     results = []
-    try:
-        entries = sorted(os.listdir(str(folder_path)))
-    except PermissionError:
-        return jsonify({'error': 'Permission denied'}), 403
-
-    for entry in entries:
-        file_path = folder_path / entry
+    for file_path in discovered_files:
         if not file_path.is_file():
             continue
 
-        # Deep Pillow verification (with UPLOAD_MAX_PIXELS to allow high-res & reprocessed images)
-        is_valid, _, (width, height), _ = validate_image_file(file_path, max_pixels=UPLOAD_MAX_PIXELS)
+        # Deep Pillow verification (safely filters out non-images)
+        is_valid, _, (width, height), _ = validate_image_file(file_path, max_pixels=INPUT_MAX_PIXELS, role="input")
         if not is_valid:
             continue
 
         file_size = file_path.stat().st_size
+        filename = file_path.name
 
+        # Check if an active or completed job already exists in current session memory
         existing_job = None
         with jobs_lock:
             for j in jobs.values():
                 if j.get('input_path') == str(file_path):
-                    existing_job = j
-                    break
+                    # Preserve active jobs to prevent duplicates on repeated folder selection
+                    if j.get('status') in ('pending', 'processing', 'validating', 'retry'):
+                        existing_job = j
+                        break
+                    # Preserve completed jobs
+                    elif j.get('status') == 'completed':
+                        existing_job = j
+                        break
 
+        # Check SQLite if not found in memory (only reuse if completed)
         if not existing_job:
             try:
                 with job_mgr.get_connection() as conn:
                     cur = conn.execute(
-                        "SELECT id FROM jobs WHERE input_path = ? ORDER BY created_at DESC LIMIT 1",
-                        (str(file_path),)
+                        "SELECT id FROM jobs WHERE input_path = ? AND status = ? ORDER BY completed_at DESC LIMIT 1",
+                        (str(file_path), STATUS_COMPLETED)
                     )
                     row = cur.fetchone()
                     if row:
@@ -1469,12 +1862,12 @@ def api_select_folder():
                                 'dimensions': db_job.get('dimensions', f"{width}x{height}"),
                                 'file_size': db_job.get('file_size', file_size),
                                 'file_size_human': human_size(db_job.get('file_size', file_size)),
-                                'status': 'completed' if db_job['status'] == STATUS_COMPLETED else ('error' if db_job['status'] == STATUS_FAILED else 'pending'),
-                                'raw_status': db_job['status'],
+                                'status': 'completed',
+                                'raw_status': STATUS_COMPLETED,
                                 'retry_count': db_job.get('retry_count', 0),
                                 'max_retries': db_job.get('max_retries', 3),
-                                'error': db_job.get('error_message'),
-                                'is_oom': bool(db_job.get('is_oom', 0)),
+                                'error': None,
+                                'is_oom': False,
                                 'start_time': db_job.get('started_at'),
                                 'end_time': db_job.get('completed_at'),
                                 'elapsed': db_job.get('elapsed_seconds'),
@@ -1508,16 +1901,18 @@ def api_select_folder():
                 'is_oom': existing_job.get('is_oom', False),
                 'thumbnail_url': f"/api/thumbnail/{job_id}",
                 'output_dimensions': existing_job.get('output_dimensions', ''),
-                'output_size': existing_job.get('output_size', 0)
+                'output_size': existing_job.get('output_size', 0),
+                'source': existing_job.get('source', 'folder')
             })
         else:
+            # Create fresh job entering QUEUED ('pending') state
             job_id = str(uuid.uuid4())
             thumb_path = THUMBNAIL_DIR / f"{job_id}.jpg"
             make_thumbnail(file_path, thumb_path)
 
             job_entry = {
                 'id': job_id,
-                'filename': entry,
+                'filename': filename,
                 'input_path': str(file_path),
                 'output_path': None,
                 'width': width,
@@ -1542,7 +1937,7 @@ def api_select_folder():
             try:
                 job_mgr.add_job(
                     job_id=job_id,
-                    filename=entry,
+                    filename=filename,
                     input_path=str(file_path),
                     dimensions=f"{width}x{height}",
                     file_size=file_size,
@@ -1556,7 +1951,7 @@ def api_select_folder():
 
             results.append({
                 'job_id': job_id,
-                'filename': entry,
+                'filename': filename,
                 'width': width,
                 'height': height,
                 'dimensions': f"{width}x{height}",
@@ -1568,15 +1963,20 @@ def api_select_folder():
                 'is_oom': False,
                 'thumbnail_url': f"/api/thumbnail/{job_id}",
                 'output_dimensions': '',
-                'output_size': 0
+                'output_size': 0,
+                'source': 'folder'
             })
 
     logger.info(f"Loaded {len(results)} valid images from {folder_path}")
     return jsonify({
+        'status': 'success',
         'files': results,
+        'jobs': results,
         'folder': str(folder_path),
         'total_valid': len(results),
-        'count': len(results)
+        'valid_count': len(results),
+        'count': len(results),
+        'source': 'folder'
     })
 
 @app.route('/api/thumbnail/<job_id>')
@@ -1613,14 +2013,14 @@ def api_process():
         except (ValueError, TypeError):
             tile_mode = 'auto'
 
-    export_format = data.get('export_format', 'auto')
+    export_format = data.get('export_format') or data.get('format', 'auto')
     try:
         quality = int(data.get('quality', 95))
         quality = max(10, min(100, quality))
     except (ValueError, TypeError):
         quality = 95
 
-    output_dir_str = data.get('output_dir', None)
+    output_dir_str = data.get('output_dir') or data.get('output_folder')
     if output_dir_str:
         out_path = safe_path(output_dir_str, allow_outside_base=True)
         if not out_path:
@@ -1657,6 +2057,7 @@ def api_process():
 
     logger.info(f"Queued {len(valid_ids)} jobs (mode={tile_mode}, tile={tile_size}, format={export_format}, quality={quality})")
     return jsonify({
+        'status': 'success',
         'total_jobs': len(valid_ids),
         'tile_mode': tile_mode,
         'tile_size': tile_size,
@@ -1712,6 +2113,9 @@ def api_progress():
 def api_cancel():
     cancel_flag.set()
     job_mgr.cancel_all_pending()
+    with _job_cancel_lock:
+        for evt in _job_cancel_events.values():
+            evt.set()
     logger.info("Safe cancel requested")
     with jobs_lock:
         for j in jobs.values():
@@ -1723,11 +2127,15 @@ def api_cancel():
 
 @app.route('/api/retry', methods=['POST'])
 def api_retry():
-    data = request.get_json()
-    if not data or 'job_ids' not in data:
+    data = request.get_json() or {}
+    job_ids = data.get('job_ids', [])
+    single_id = data.get('job_id')
+    if single_id and single_id not in job_ids:
+        job_ids.append(single_id)
+    if not job_ids:
         return jsonify({'error': 'No job IDs provided'}), 400
 
-    job_ids = data['job_ids']
+    target_job_ids = list(job_ids)
     raw_tile = data.get('tile_size', 64)
     tile_mode = 'manual'
     tile_size = 64
@@ -1751,16 +2159,68 @@ def api_retry():
     output_dir = data.get('output_dir', str(session_output_dir))
 
     requeued = []
-    with jobs_lock:
-        for jid in job_ids:
-            if jid in jobs and jobs[jid]['status'] in ('error', 'cancelled', 'retry'):
-                jobs[jid]['status'] = 'pending'
-                jobs[jid]['raw_status'] = STATUS_QUEUED
-                jobs[jid]['error'] = None
-                jobs[jid]['is_oom'] = False
-                jobs[jid]['retry_count'] = 0
-                job_mgr.reset_for_retry(jid)
-                requeued.append(jid)
+    conflict_errors = []
+
+    for jid in target_job_ids:
+        parent_job = job_mgr.get_job(jid)
+        if not parent_job:
+            with jobs_lock:
+                mem_j = jobs.get(jid)
+                if mem_j:
+                    parent_job = mem_j
+
+        if not parent_job:
+            continue
+
+        # Non-destructively create new child retry job
+        success, child_jid, msg = job_mgr.create_retry_job(
+            parent_job_id=jid,
+            custom_config={
+                'tile_size': tile_size,
+                'tile_mode': tile_mode,
+                'export_format': export_format,
+                'quality': quality,
+                'output_dir': output_dir
+            }
+        )
+        if not success:
+            logger.warning(f"Could not create retry job for {jid}: {msg}")
+            conflict_errors.append({"job_id": jid, "reason": msg})
+            continue
+
+        child_row = job_mgr.get_job(child_jid)
+        with jobs_lock:
+            jobs[child_jid] = {
+                'id': child_jid,
+                'parent_job_id': jid,
+                'filename': child_row['filename'] if child_row else parent_job.get('filename', 'unknown'),
+                'input_path': child_row['input_path'] if child_row else parent_job.get('input_path'),
+                'output_dir': output_dir,
+                'status': 'pending',
+                'raw_status': STATUS_QUEUED,
+                'progress': 0,
+                'tile_size': tile_size,
+                'tile_mode': tile_mode,
+                'export_format': export_format,
+                'quality': quality,
+                'error': None,
+                'is_oom': False,
+                'retry_count': 0,
+                'dimensions': child_row.get('dimensions', '') if child_row else parent_job.get('dimensions', ''),
+                'file_size': child_row.get('file_size', 0) if child_row else parent_job.get('file_size', 0),
+                'output_size': 0,
+                'output_dimensions': '',
+                'elapsed': 0.0,
+                'start_time': None,
+                'end_time': None
+            }
+        requeued.append(child_jid)
+
+    if not requeued and conflict_errors:
+        return jsonify({
+            'error': 'Conflict: unable to retry requested jobs',
+            'details': conflict_errors
+        }), 409
 
     if requeued:
         processing_queue.put({
@@ -1772,8 +2232,14 @@ def api_retry():
             'output_dir': output_dir
         })
 
-    logger.info(f"Retrying {len(requeued)} jobs (mode={tile_mode}, tile={tile_size})")
-    return jsonify({'requeued': len(requeued), 'tile_mode': tile_mode, 'tile_size': tile_size})
+    logger.info(f"Retrying: created {len(requeued)} new child retry jobs (mode={tile_mode}, tile={tile_size})")
+    return jsonify({
+        'status': 'success',
+        'requeued': len(requeued),
+        'retry_job_ids': requeued,
+        'tile_mode': tile_mode,
+        'tile_size': tile_size
+    })
 
 @app.route('/api/reprocess', methods=['POST'])
 def api_reprocess():
@@ -1814,7 +2280,7 @@ def api_reprocess():
             if not inp_path.is_file():
                 continue
 
-            res = validate_image_file(inp_path, max_pixels=UPLOAD_MAX_PIXELS)
+            res = validate_image_file(inp_path, max_pixels=INPUT_MAX_PIXELS, role="input")
             is_valid, reason, (width, height), fmt = res
             if not is_valid:
                 continue
@@ -1868,6 +2334,12 @@ def api_reprocess():
                 )
             except Exception as e:
                 logger.error(f"Failed to record reprocessed job in SQLite: {e}")
+                if new_thumb.is_file():
+                    try:
+                        new_thumb.unlink()
+                    except Exception:
+                        pass
+                continue
 
             jobs[new_jid] = new_job_entry
             new_jobs.append(new_job_entry)
@@ -1917,6 +2389,7 @@ def api_reprocess():
 
     logger.info(f"Created {len(new_jobs)} reprocessed job(s) (auto_process={auto_process})")
     return jsonify({
+        'status': 'success',
         'reprocessed_count': len(new_jobs),
         'jobs': new_jobs
     })
@@ -1931,8 +2404,8 @@ def api_result(job_id):
     with jobs_lock:
         job = jobs.get(job_id)
 
-    if not job or not job.get('output_path'):
-        return jsonify({'error': 'Result not found'}), 404
+    if not job or job.get('status') != 'completed' or not job.get('output_path'):
+        return jsonify({'error': 'Result not found or job not completed'}), 404
 
     output_path = Path(job['output_path'])
     if not output_path.is_file():
@@ -1963,21 +2436,178 @@ def api_original(job_id):
 def api_history():
     return jsonify(load_history())
 
+def open_in_windows_explorer(folder_path):
+    """
+    Open folder in Windows Explorer on the user's interactive desktop (WinSta0\\Default).
+    If an Explorer window for this folder is already open, restores and brings it to top.
+    Otherwise launches a new explorer.exe process on WinSta0\\Default using Win32 CreateProcessW.
+    """
+    norm_path = os.path.normpath(str(folder_path))
+    if not os.path.isdir(norm_path):
+        return {"status": "error", "error": f"Thư mục không tồn tại: {norm_path}"}
+
+    if sys.platform != 'win32':
+        try:
+            if sys.platform == 'darwin':
+                subprocess.Popen(['open', norm_path])
+            else:
+                subprocess.Popen(['xdg-open', norm_path])
+            return {"status": "success", "opened": True, "path": norm_path}
+        except Exception as e:
+            return {"status": "error", "error": str(e)}
+
+    import ctypes
+    user32 = ctypes.windll.user32
+    kernel32 = ctypes.windll.kernel32
+
+    # 1. Switch calling thread to Default desktop so any Win32 calls target user's physical screen
+    try:
+        h_default = user32.OpenDesktopW('Default', 0, False, 0x01FF)
+        if h_default:
+            user32.SetThreadDesktop(h_default)
+    except Exception:
+        h_default = None
+
+    folder_name = os.path.basename(norm_path).lower()
+
+    # 2. Check if an Explorer window for this folder is already open on Default desktop
+    matched_hwnd = None
+    if h_default:
+        def enum_desk_proc(hwnd, lparam):
+            nonlocal matched_hwnd
+            if user32.IsWindowVisible(hwnd):
+                class_buff = ctypes.create_unicode_buffer(256)
+                user32.GetClassNameW(hwnd, class_buff, 256)
+                if class_buff.value in ['CabinetWClass', 'ExploreWClass']:
+                    length = user32.GetWindowTextLengthW(hwnd)
+                    buff = ctypes.create_unicode_buffer(length + 1)
+                    user32.GetWindowTextW(hwnd, buff, length + 1)
+                    title = buff.value.lower()
+                    if folder_name and (folder_name in title or norm_path.lower() in title):
+                        matched_hwnd = hwnd
+                        return False
+            return True
+
+        try:
+            EnumDesktopWindowsProc = ctypes.WINFUNCTYPE(ctypes.c_bool, ctypes.c_void_p, ctypes.c_void_p)
+            user32.EnumDesktopWindows(h_default, EnumDesktopWindowsProc(enum_desk_proc), 0)
+        except Exception:
+            pass
+
+    if matched_hwnd:
+        try:
+            user32.AllowSetForegroundWindow(-1)
+        except Exception:
+            pass
+        user32.ShowWindow(matched_hwnd, 9)  # SW_RESTORE
+        user32.SetForegroundWindow(matched_hwnd)
+        user32.BringWindowToTop(matched_hwnd)
+        return {"status": "success", "opened": True, "restored": True, "hwnd": matched_hwnd, "path": norm_path}
+
+    # 3. Not found -> launch new explorer process explicitly on WinSta0\Default
+    class _STARTUPINFO(ctypes.Structure):
+        _fields_ = [
+            ('cb', ctypes.c_ulong),
+            ('lpReserved', ctypes.c_wchar_p),
+            ('lpDesktop', ctypes.c_wchar_p),
+            ('lpTitle', ctypes.c_wchar_p),
+            ('dwX', ctypes.c_ulong),
+            ('dwY', ctypes.c_ulong),
+            ('dwXSize', ctypes.c_ulong),
+            ('dwYSize', ctypes.c_ulong),
+            ('dwXCountChars', ctypes.c_ulong),
+            ('dwYCountChars', ctypes.c_ulong),
+            ('dwFillAttribute', ctypes.c_ulong),
+            ('dwFlags', ctypes.c_ulong),
+            ('wShowWindow', ctypes.c_ushort),
+            ('cbReserved2', ctypes.c_ushort),
+            ('lpReserved2', ctypes.c_void_p),
+            ('hStdInput', ctypes.c_void_p),
+            ('hStdOutput', ctypes.c_void_p),
+            ('hStdError', ctypes.c_void_p),
+        ]
+
+    class _PROCESS_INFORMATION(ctypes.Structure):
+        _fields_ = [
+            ('hProcess', ctypes.c_void_p),
+            ('hThread', ctypes.c_void_p),
+            ('dwProcessId', ctypes.c_ulong),
+            ('dwThreadId', ctypes.c_ulong),
+        ]
+
+    si = _STARTUPINFO()
+    si.cb = ctypes.sizeof(_STARTUPINFO)
+    si.lpDesktop = "WinSta0\\Default"
+    si.dwFlags = 1  # STARTF_USESHOWWINDOW
+    si.wShowWindow = 1  # SW_SHOWNORMAL
+
+    pi = _PROCESS_INFORMATION()
+    cmd = f'C:\\Windows\\explorer.exe "{norm_path}"'
+    success = kernel32.CreateProcessW(
+        None, cmd, None, None, False, 0, None, None, ctypes.byref(si), ctypes.byref(pi)
+    )
+
+    if success:
+        kernel32.CloseHandle(pi.hProcess)
+        kernel32.CloseHandle(pi.hThread)
+        return {"status": "success", "opened": True, "restored": False, "pid": pi.dwProcessId, "path": norm_path}
+    else:
+        # Fallback to os.startfile / subprocess
+        try:
+            if hasattr(os, 'startfile'):
+                os.startfile(norm_path)
+            else:
+                subprocess.Popen(['explorer.exe', norm_path])
+            return {"status": "success", "opened": True, "fallback": True, "path": norm_path}
+        except Exception as e:
+            return {"status": "error", "error": f"Không thể khởi chạy Windows Explorer: {str(e)}"}
+
 @app.route('/api/open-folder', methods=['POST'])
 def api_open_folder():
-    data = request.get_json()
-    if not data or 'path' not in data:
-        return jsonify({'error': 'No path provided'}), 400
+    data = request.get_json(silent=True) or {}
+    path_val = data.get('path')
 
-    folder_path = safe_path(data['path'], allow_outside_base=True)
-    if not folder_path or not folder_path.is_dir():
-        return jsonify({'error': 'Directory not found or access denied'}), 404
+    # Resolve target directory
+    if path_val and str(path_val).strip():
+        folder_path = safe_path(str(path_val).strip(), allow_outside_base=True)
+        if not folder_path:
+            return jsonify({
+                'status': 'error',
+                'error': 'Đường dẫn thư mục không hợp lệ hoặc bị từ chối truy cập do chính sách bảo mật.'
+            }), 403
+    else:
+        folder_path = session_output_dir
 
-    try:
-        subprocess.Popen(['explorer', str(folder_path)], creationflags=subprocess.CREATE_NO_WINDOW)
-        return jsonify({'opened': True})
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
+    # Check existence
+    if not folder_path.exists():
+        # Application policy: default session output directory is created on demand
+        if folder_path == session_output_dir or folder_path == OUTPUT_DIR:
+            try:
+                folder_path.mkdir(parents=True, exist_ok=True)
+            except Exception as e:
+                return jsonify({
+                    'status': 'error',
+                    'error': f'Không thể tự động khởi tạo thư mục xuất mặc định: {str(e)}'
+                }), 500
+        else:
+            # Custom configured path that does not exist: DO NOT silently fall back, return exact reason
+            return jsonify({
+                'status': 'error',
+                'error': f'Thư mục không tồn tại trên hệ thống: {str(folder_path)}'
+            }), 404
+
+    if not folder_path.is_dir():
+        return jsonify({
+            'status': 'error',
+            'error': f'Đường dẫn đã cấu hình không phải là thư mục: {str(folder_path)}'
+        }), 400
+
+    result = open_in_windows_explorer(folder_path)
+    if result.get('status') == 'success':
+        return jsonify(result), 200
+    else:
+        logger.error(f"Failed to open folder {folder_path} in Explorer: {result.get('error')}")
+        return jsonify(result), 500
 
 @app.route('/api/set-output-dir', methods=['POST'])
 def api_set_output_dir():
@@ -2006,67 +2636,163 @@ def is_local_request():
         return True
     return False
 
-def launch_native_folder_dialog(initial_dir=None, title="Chọn thư mục ảnh - AI Image Studio", timeout=180):
+_native_dialog_lock = threading.Lock()
+
+def launch_native_folder_dialog(initial_dir=None, title="Select Image Folder - AI Image Studio", timeout=180):
     """
-    Launch Windows native Folder Browser Dialog via isolated subprocess.
+    Launch Windows native Folder Browser Dialog attached to WinSta0\\Default via isolated subprocess.
+    Guarantees only one dialog subprocess is active at a time.
     Returns dict:
       {"status": "success", "path": str(validated_path)}
       {"status": "cancelled", "message": "..."}
+      {"status": "busy", "error": "..."}
       {"status": "error", "error": "..."}
     """
-    script_path = BASE_DIR / "folder_dialog.py"
-    if not script_path.is_file():
-        return {"status": "error", "error": "Tệp hỗ trợ duyệt thư mục (folder_dialog.py) không tồn tại."}
+    if not _native_dialog_lock.acquire(blocking=False):
+        return {
+            "status": "busy",
+            "error": "Folder selection dialog is already open. Please complete or close the previous dialog."
+        }
 
-    cmd = [sys.executable, str(script_path)]
-    if initial_dir:
-        v_init = safe_path(initial_dir, allow_outside_base=True)
-        if v_init and v_init.is_dir():
-            cmd.append(str(v_init))
-        else:
-            cmd.append("")
-    else:
-        cmd.append("")
-
-    if title:
-        cmd.append(str(title))
-
+    out_file = None
     try:
-        proc = subprocess.run(
-            cmd,
-            capture_output=True,
-            text=True,
-            encoding='utf-8',
-            timeout=timeout,
-            shell=False
-        )
-    except subprocess.TimeoutExpired:
-        logger.warning(f"Native folder dialog timed out after {timeout}s")
-        return {"status": "error", "error": "Hộp thoại chọn thư mục đã hết thời gian chờ (Timeout)."}
-    except Exception as e:
-        logger.error(f"Failed to launch native folder dialog subprocess: {e}")
-        return {"status": "error", "error": f"Không thể mở hộp thoại chọn thư mục: {str(e)}"}
+        script_path = BASE_DIR / "folder_dialog.py"
+        if not script_path.is_file():
+            return {"status": "error", "error": "Folder dialog helper file (folder_dialog.py) does not exist."}
 
-    if proc.returncode != 0:
-        err_msg = proc.stderr.strip() if proc.stderr else f"Exit code {proc.returncode}"
-        logger.error(f"Folder dialog subprocess error: {err_msg}")
-        return {"status": "error", "error": f"Lỗi hộp thoại: {err_msg}"}
+        # Create temporary file to safely exchange selected path across processes
+        import tempfile
+        tmp_fd, out_file = tempfile.mkstemp(prefix="folder_pick_", suffix=".txt")
+        os.close(tmp_fd)
 
-    raw_path = proc.stdout.strip()
-    if not raw_path:
-        return {"status": "cancelled", "message": "Người dùng đã đóng hoặc hủy hộp thoại chọn thư mục."}
+        init_dir_arg = ""
+        if initial_dir:
+            v_init = safe_path(initial_dir, allow_outside_base=True)
+            if v_init and v_init.is_dir():
+                init_dir_arg = str(v_init)
 
-    validated = safe_path(raw_path, allow_outside_base=True)
-    if not validated:
-        return {"status": "error", "error": "Đường dẫn thư mục không hợp lệ hoặc bị hạn chế bảo mật."}
+        title_arg = str(title) if title else "Select Image Folder - AI Image Studio"
 
-    if not validated.is_dir():
-        return {"status": "error", "error": "Thư mục đã chọn không tồn tại."}
+        raw_path = ""
+        is_error = False
+        err_msg = ""
 
-    if not os.access(str(validated), os.R_OK):
-        return {"status": "error", "error": "Không có quyền đọc thư mục đã chọn."}
+        if sys.platform == 'win32':
+            import ctypes
+            kernel32 = ctypes.windll.kernel32
 
-    return {"status": "success", "path": str(validated)}
+            class _STARTUPINFO(ctypes.Structure):
+                _fields_ = [
+                    ('cb', ctypes.c_ulong),
+                    ('lpReserved', ctypes.c_wchar_p),
+                    ('lpDesktop', ctypes.c_wchar_p),
+                    ('lpTitle', ctypes.c_wchar_p),
+                    ('dwX', ctypes.c_ulong),
+                    ('dwY', ctypes.c_ulong),
+                    ('dwXSize', ctypes.c_ulong),
+                    ('dwYSize', ctypes.c_ulong),
+                    ('dwXCountChars', ctypes.c_ulong),
+                    ('dwYCountChars', ctypes.c_ulong),
+                    ('dwFillAttribute', ctypes.c_ulong),
+                    ('dwFlags', ctypes.c_ulong),
+                    ('wShowWindow', ctypes.c_ushort),
+                    ('cbReserved2', ctypes.c_ushort),
+                    ('lpReserved2', ctypes.c_void_p),
+                    ('hStdInput', ctypes.c_void_p),
+                    ('hStdOutput', ctypes.c_void_p),
+                    ('hStdError', ctypes.c_void_p),
+                ]
+
+            class _PROCESS_INFORMATION(ctypes.Structure):
+                _fields_ = [
+                    ('hProcess', ctypes.c_void_p),
+                    ('hThread', ctypes.c_void_p),
+                    ('dwProcessId', ctypes.c_ulong),
+                    ('dwThreadId', ctypes.c_ulong),
+                ]
+
+            si = _STARTUPINFO()
+            si.cb = ctypes.sizeof(_STARTUPINFO)
+            si.lpDesktop = "WinSta0\\Default"
+            si.dwFlags = 1  # STARTF_USESHOWWINDOW
+            si.wShowWindow = 1  # SW_SHOWNORMAL
+
+            pi = _PROCESS_INFORMATION()
+            cmd = f'"{sys.executable}" "{str(script_path)}" "{out_file}" "{init_dir_arg}" "{title_arg}"'
+
+            created = kernel32.CreateProcessW(
+                None, cmd, None, None, False, 0, None, None, ctypes.byref(si), ctypes.byref(pi)
+            )
+
+            if not created:
+                # Fallback to standard subprocess
+                cmd_list = [sys.executable, str(script_path), out_file, init_dir_arg, title_arg]
+                try:
+                    proc = subprocess.run(cmd_list, capture_output=True, text=True, encoding='utf-8', timeout=timeout, shell=False)
+                    if proc.returncode != 0:
+                        is_error = True
+                        err_msg = proc.stderr.strip() if proc.stderr else f"Exit code {proc.returncode}"
+                except subprocess.TimeoutExpired:
+                    logger.warning(f"Native folder dialog timed out after {timeout}s")
+                    return {"status": "error", "error": "Folder selection dialog timed out."}
+                except Exception as e:
+                    return {"status": "error", "error": f"Unable to open folder selection dialog: {str(e)}"}
+            else:
+                # Wait for child process with timeout
+                timeout_ms = int(timeout * 1000)
+                wait_res = kernel32.WaitForSingleObject(pi.hProcess, timeout_ms)
+                if wait_res == 0x00000102:  # WAIT_TIMEOUT
+                    kernel32.TerminateProcess(pi.hProcess, 1)
+                    kernel32.CloseHandle(pi.hProcess)
+                    kernel32.CloseHandle(pi.hThread)
+                    logger.warning(f"Native folder dialog timed out after {timeout}s")
+                    return {"status": "error", "error": "Folder selection dialog timed out."}
+
+                kernel32.CloseHandle(pi.hProcess)
+                kernel32.CloseHandle(pi.hThread)
+        else:
+            cmd_list = [sys.executable, str(script_path), out_file, init_dir_arg, title_arg]
+            proc = subprocess.run(cmd_list, capture_output=True, text=True, encoding='utf-8', timeout=timeout, shell=False)
+            if proc.returncode != 0:
+                is_error = True
+                err_msg = proc.stderr.strip()
+
+        if is_error:
+            logger.error(f"Folder dialog subprocess error: {err_msg}")
+            return {"status": "error", "error": f"Folder dialog error: {err_msg}"}
+
+        # Read result from out_file
+        if out_file and os.path.exists(out_file):
+            try:
+                with open(out_file, 'r', encoding='utf-8') as f:
+                    raw_path = f.read().strip()
+            except Exception as e:
+                logger.error(f"Failed to read folder dialog result file: {e}")
+
+        if not raw_path:
+            return {"status": "cancelled", "message": "Folder selection was cancelled or closed by user."}
+
+        if raw_path.startswith("ERROR:"):
+            return {"status": "error", "error": raw_path}
+
+        validated = safe_path(raw_path, allow_outside_base=True)
+        if not validated:
+            return {"status": "error", "error": "Folder path is invalid or restricted by security policy."}
+
+        if not validated.is_dir():
+            return {"status": "error", "error": "Selected folder does not exist."}
+
+        if not os.access(str(validated), os.R_OK):
+            return {"status": "error", "error": "Read permission denied for selected folder."}
+
+        return {"status": "success", "path": str(validated)}
+    finally:
+        if out_file and os.path.exists(out_file):
+            try:
+                os.remove(out_file)
+            except Exception:
+                pass
+        _native_dialog_lock.release()
 
 @app.route('/api/browse-folder', methods=['GET', 'POST'])
 def api_browse_folder():
@@ -2075,7 +2801,7 @@ def api_browse_folder():
         if not is_local_request():
             return jsonify({
                 'status': 'error',
-                'error': 'Chức năng mở hộp thoại thư mục Windows chỉ khả dụng trên máy chủ cục bộ (Localhost). Khi truy cập từ thiết bị khác, vui lòng dùng chức năng tải lên file.',
+                'error': 'Windows native folder dialog is only available on localhost. For remote access, please use file upload.',
                 'is_remote': True
             }), 403
 
@@ -2086,21 +2812,23 @@ def api_browse_folder():
         if direct_path:
             v_path = safe_path(direct_path, allow_outside_base=True)
             if not v_path:
-                return jsonify({'status': 'error', 'error': 'Đường dẫn thư mục không hợp lệ hoặc bị hạn chế bảo mật.'}), 403
+                return jsonify({'status': 'error', 'error': 'Folder path is invalid or restricted by security policy.'}), 403
             if not v_path.is_dir():
-                return jsonify({'status': 'error', 'error': 'Thư mục không tồn tại trên hệ thống.'}), 404
+                return jsonify({'status': 'error', 'error': 'Folder does not exist on system.'}), 404
             if not os.access(str(v_path), os.R_OK):
-                return jsonify({'status': 'error', 'error': 'Không có quyền đọc thư mục này.'}), 403
+                return jsonify({'status': 'error', 'error': 'Read permission denied for this folder.'}), 403
             return jsonify({'status': 'success', 'path': str(v_path)})
 
         # Launch native Windows dialog via subprocess
         initial_dir = data.get('initial_dir')
-        title = data.get('title') or "Chọn thư mục ảnh - AI Image Studio"
+        title = data.get('title') or "Select Image Folder - AI Image Studio"
         result = launch_native_folder_dialog(initial_dir=initial_dir, title=title)
 
         status_code = 200
         if result.get('status') == 'error':
             status_code = 400
+        elif result.get('status') == 'busy':
+            status_code = 429
         return jsonify(result), status_code
 
     # GET: Existing directory browser for backward compatibility / fallback
@@ -2194,6 +2922,7 @@ def api_jobs():
                     'thumbnail_url': f"/api/thumbnail/{jid}",
                     'output_dimensions': r.get('output_dimensions') or live.get('output_dimensions', ''),
                     'output_size': r.get('output_size') or live.get('output_size', 0),
+                    'source': live.get('source') or ('folder' if 'uploads' not in str(r.get('input_path', '')) else 'upload'),
                     'created_at': r.get('created_at'),
                     'completed_at': r.get('completed_at')
                 })
@@ -2214,12 +2943,12 @@ def api_jobs():
         for jid, job in jobs.items():
             result.append({
                 'job_id': jid,
-                'filename': job['filename'],
+                'filename': job.get('filename', 'unknown'),
                 'dimensions': job.get('dimensions', ''),
                 'file_size': job.get('file_size', 0),
                 'file_size_human': job.get('file_size_human', ''),
-                'status': job['status'],
-                'raw_status': job.get('raw_status', job['status']),
+                'status': job.get('status', 'pending'),
+                'raw_status': job.get('raw_status', job.get('status', 'pending')),
                 'retry_count': job.get('retry_count', 0),
                 'max_retries': job.get('max_retries', 3),
                 'error': job.get('error'),
@@ -2227,7 +2956,8 @@ def api_jobs():
                 'elapsed': job.get('elapsed'),
                 'thumbnail_url': job.get('thumbnail_url', ''),
                 'output_dimensions': job.get('output_dimensions', ''),
-                'output_size': job.get('output_size', 0)
+                'output_size': job.get('output_size', 0),
+                'source': job.get('source', 'upload')
             })
     return jsonify(result)
 
@@ -2236,6 +2966,13 @@ def api_export_zip():
     """Export completed jobs as a streamed ZIP archive without blocking AI worker."""
     if request.method == 'POST':
         data = request.get_json(silent=True) or {}
+        if not data and request.form:
+            data = request.form.to_dict()
+            if 'job_ids' in data and isinstance(data['job_ids'], str):
+                try:
+                    data['job_ids'] = json.loads(data['job_ids'])
+                except Exception:
+                    data['job_ids'] = [j.strip() for j in data['job_ids'].split(',') if j.strip()]
         job_ids = data.get('job_ids')
         mode = data.get('mode', 'all' if not job_ids else 'selected')
         batch_id = data.get('batch_id')
@@ -2276,6 +3013,13 @@ def api_export_report():
     """Generate comprehensive CSV or offline HTML report for jobs."""
     if request.method == 'POST':
         data = request.get_json(silent=True) or {}
+        if not data and request.form:
+            data = request.form.to_dict()
+            if 'job_ids' in data and isinstance(data['job_ids'], str):
+                try:
+                    data['job_ids'] = json.loads(data['job_ids'])
+                except Exception:
+                    data['job_ids'] = [j.strip() for j in data['job_ids'].split(',') if j.strip()]
         fmt = (data.get('format') or 'csv').lower()
         mode = data.get('mode', 'all')
         job_ids = data.get('job_ids')
@@ -2380,7 +3124,7 @@ def api_remove_job():
     thumb = THUMBNAIL_DIR / f"{job_id}.jpg"
     thumb.unlink(missing_ok=True)
 
-    return jsonify({'removed': True})
+    return jsonify({'status': 'success', 'removed': True})
 
 @app.route('/api/clear-jobs', methods=['POST'])
 def api_clear_jobs():
@@ -2395,7 +3139,7 @@ def api_clear_jobs():
             thumb.unlink(missing_ok=True)
 
     job_mgr.clear_finished_jobs()
-    return jsonify({'removed': removed})
+    return jsonify({'status': 'success', 'removed': removed})
 
 @app.route('/api/default-input-dir')
 def api_default_input_dir():
@@ -2410,7 +3154,36 @@ def api_default_output_dir():
 @app.route('/api/gpu-stats')
 def api_gpu_stats():
     """Return real-time GPU and VRAM metrics + Worker status."""
-    worker = get_ai_worker(base_dir=BASE_DIR)
+    use_subproc = os.environ.get("REALESRGAN_SUBPROCESS", "1") == "1"
+    worker = get_ai_worker(base_dir=BASE_DIR, use_subprocess=use_subproc)
+    
+    # Auto-revive stopped/crashed worker on telemetry poll
+    if hasattr(worker, 'initialize_model') and getattr(worker, 'state', None) in ('STOPPED', 'ERROR'):
+        try:
+            worker.initialize_model()
+        except Exception as e:
+            logger.warning(f"Auto-revive worker failed: {e}")
+
+    status = worker.get_status()
+    if not isinstance(status, dict):
+        status = {'state': 'UNKNOWN'}
+    if 'gpu' not in status or not status['gpu']:
+        status['gpu'] = get_gpu_info()
+
+    resp = make_response(jsonify(status))
+    resp.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
+    resp.headers['Pragma'] = 'no-cache'
+    return resp
+
+@app.route('/api/worker-restart', methods=['POST'])
+def api_worker_restart():
+    """Explicitly restart the AI worker subprocess."""
+    use_subproc = os.environ.get("REALESRGAN_SUBPROCESS", "1") == "1"
+    worker = get_ai_worker(base_dir=BASE_DIR, use_subprocess=use_subproc)
+    if hasattr(worker, 'stop'):
+        worker.stop()
+    if hasattr(worker, 'initialize_model'):
+        worker.initialize_model()
     return jsonify(worker.get_status())
 
 @app.route('/api/preview/<job_id>', methods=['GET', 'POST'])
@@ -2446,7 +3219,8 @@ def api_preview(job_id):
     except (ValueError, TypeError):
         quality = 90
 
-    worker = get_ai_worker(base_dir=BASE_DIR)
+    use_subproc = os.environ.get("REALESRGAN_SUBPROCESS", "1") == "1"
+    worker = get_ai_worker(base_dir=BASE_DIR, use_subprocess=use_subproc)
     result = worker.generate_quick_preview(
         input_path=inp_p,
         thumbnails_dir=THUMBNAIL_DIR,
@@ -2503,27 +3277,57 @@ def api_video_upload():
             rejected.append({"filename": filename, "reason": f"Unsupported container extension: {ext}"})
             continue
 
-        # Save to uploads directory safely
-        target_path = UPLOAD_DIR / filename
+        # Determine destination filename with collision avoidance
+        raw_target = UPLOAD_DIR / filename
+        if raw_target.exists():
+            stem = Path(filename).stem
+            ext = Path(filename).suffix
+            counter = 1
+            while (UPLOAD_DIR / f"{stem}_{counter}{ext}").exists():
+                counter += 1
+            final_target = UPLOAD_DIR / f"{stem}_{counter}{ext}"
+            saved_filename = final_target.name
+        else:
+            final_target = raw_target
+            saved_filename = filename
+
+        # Stream save to uploads directory with in-flight size enforcement
+        temp_target = final_target.with_suffix(f"{final_target.suffix}.upload_tmp")
+        bytes_written = 0
+        exceeded = False
         try:
-            f.save(str(target_path))
-            f_size = target_path.stat().st_size
-            if f_size == 0:
-                target_path.unlink()
-                rejected.append({"filename": filename, "reason": "Uploaded video file is empty (0 bytes)"})
-                continue
-            if f_size > max_bytes:
-                target_path.unlink()
-                rejected.append({"filename": filename, "reason": f"File size ({f_size / (1024*1024):.1f} MB) exceeds limit ({max_v_size_mb:.0f} MB)"})
+            with open(temp_target, "wb") as out_f:
+                chunk_size = 1024 * 1024  # 1 MB chunk
+                while True:
+                    chunk = f.stream.read(chunk_size)
+                    if not chunk:
+                        break
+                    bytes_written += len(chunk)
+                    if bytes_written > max_bytes:
+                        exceeded = True
+                        break
+                    out_f.write(chunk)
+
+            if exceeded:
+                temp_target.unlink(missing_ok=True)
+                rejected.append({"filename": filename, "reason": f"File size exceeds limit ({max_v_size_mb:.0f} MB)"})
                 continue
 
+            if bytes_written == 0:
+                temp_target.unlink(missing_ok=True)
+                rejected.append({"filename": filename, "reason": "Uploaded video file is empty (0 bytes)"})
+                continue
+
+            temp_target.replace(final_target)
             accepted.append({
-                "filename": filename,
-                "path": str(target_path),
-                "size": f_size,
-                "size_human": human_size(f_size)
+                "filename": saved_filename,
+                "original_filename": filename,
+                "path": str(final_target),
+                "size": bytes_written,
+                "size_human": human_size(bytes_written)
             })
         except Exception as e:
+            temp_target.unlink(missing_ok=True)
             rejected.append({"filename": filename, "reason": str(e)})
 
     return jsonify({
@@ -2653,7 +3457,15 @@ def api_single_video_job(job_id):
         return jsonify(job)
 
     # DELETE
-    video_pipeline.cancel_job(job_id)
+    if video_pipeline.is_job_running(job_id):
+        video_pipeline.cancel_job(job_id)
+        stopped = video_pipeline.wait_for_job_stopped(job_id, timeout=5.0)
+        if not stopped:
+            return jsonify({
+                "error": "Video job is still actively running or terminating; cannot delete workspace until execution stops.",
+                "status": "terminating"
+            }), 409
+
     video_storage_mgr.cleanup_workspace(job_id)
     video_job_mgr.delete_video_job(job_id)
     return jsonify({"success": True, "deleted": job_id})
@@ -2868,7 +3680,8 @@ def api_video_storage():
 def cleanup_on_exit():
     """Ensure worker and CUDA resources are released cleanly on process exit."""
     try:
-        worker = get_ai_worker(base_dir=BASE_DIR)
+        use_subproc = os.environ.get("REALESRGAN_SUBPROCESS", "1") == "1"
+        worker = get_ai_worker(base_dir=BASE_DIR, use_subprocess=use_subproc)
         worker.stop()
     except Exception:
         pass

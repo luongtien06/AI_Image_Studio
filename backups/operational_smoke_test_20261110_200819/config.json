@@ -1,0 +1,76 @@
+{
+  "server": {
+    "host": "127.0.0.1",
+    "port": 5678,
+    "version": "1.0.0"
+  },
+  "directories": {
+    "default_input_dir": "uploads",
+    "default_output_dir": "output",
+    "thumbnails_dir": "thumbnails",
+    "logs_dir": "logs",
+    "data_dir": "data",
+    "exports_dir": "data/exports",
+    "video_workspaces_dir": "data/video_workspaces"
+  },
+  "ui": {
+    "default_language": "vi",
+    "supported_languages": ["vi", "en"],
+    "default_view_mode": "grid",
+    "page_size": 50
+  },
+  "inference": {
+    "model_name": "RealESRGAN_x4plus",
+    "model_weights": "weights/RealESRGAN_x4plus.pth",
+    "inference_script": "inference_realesrgan.py",
+    "scale": 4,
+    "default_tile": 128,
+    "default_tile_mode": "auto",
+    "default_tile_pad": 20,
+    "default_gpu_id": 0,
+    "supported_tiles": [0, 32, 64, 96, 128, 192, 256]
+  },
+  "export": {
+    "default_format": "auto",
+    "supported_formats": ["auto", "png", "jpg", "jpeg", "webp"],
+    "default_quality": 95
+  },
+  "video": {
+    "ffmpeg_path": "auto",
+    "ffprobe_path": "auto",
+    "max_video_size_mb": 2048,
+    "max_duration_seconds": 3600,
+    "max_source_resolution": [3840, 2160],
+    "supported_containers": [".mp4", ".mkv", ".mov", ".avi", ".webm"],
+    "default_quality_preset": "balanced",
+    "quality_presets": {
+      "high": { "crf": 18, "preset": "slow" },
+      "balanced": { "crf": 22, "preset": "medium" },
+      "fast": { "crf": 26, "preset": "fast" }
+    },
+    "default_audio_bitrate": "192k",
+    "intermediate_format": "png",
+    "min_free_disk_space_gb": 2.0
+  },
+  "preview": {
+    "patch_size": 256
+  },
+  "reliability": {
+    "db_path": "data/jobs.db",
+    "max_retries": 3,
+    "retry_backoff_base": 2.0,
+    "per_job_logs": true,
+    "per_job_log_dir": "logs/jobs",
+    "atomic_writes": true
+  },
+  "security": {
+    "max_file_size_mb": 100,
+    "max_pixels": 25000000,
+    "upload_max_pixels": 150000000,
+    "pillow_max_image_pixels": 250000000,
+    "allowed_extensions": [".jpg", ".jpeg", ".png", ".webp", ".bmp"],
+    "allowed_image_formats": ["JPEG", "PNG", "WEBP", "BMP"],
+    "block_hidden_files": true,
+    "block_system_files": ["desktop.ini", "thumbs.db"]
+  }
+}

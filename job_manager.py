@@ -12,9 +12,10 @@ import os
 import shutil
 import sqlite3
 import threading
+import uuid
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 logger = logging.getLogger(__name__)
 
@@ -42,9 +43,9 @@ ALL_STATUSES = {
 
 # State Transition Rules
 VALID_TRANSITIONS = {
-    STATUS_QUEUED: {STATUS_VALIDATING, STATUS_PROCESSING, STATUS_CANCELLED},
+    STATUS_QUEUED: {STATUS_VALIDATING, STATUS_PROCESSING, STATUS_FAILED, STATUS_CANCELLED},
     STATUS_VALIDATING: {STATUS_PROCESSING, STATUS_FAILED, STATUS_CANCELLED, STATUS_QUEUED},
-    STATUS_PROCESSING: {STATUS_COMPLETED, STATUS_RETRY_WAIT, STATUS_FAILED, STATUS_CANCEL_REQUESTED},
+    STATUS_PROCESSING: {STATUS_COMPLETED, STATUS_RETRY_WAIT, STATUS_FAILED, STATUS_CANCEL_REQUESTED, STATUS_CANCELLED},
     STATUS_CANCEL_REQUESTED: {STATUS_CANCELLED, STATUS_COMPLETED},
     STATUS_RETRY_WAIT: {STATUS_QUEUED, STATUS_PROCESSING, STATUS_FAILED, STATUS_CANCELLED},
     STATUS_FAILED: {STATUS_QUEUED},  # manual retry reset
@@ -64,8 +65,18 @@ NON_RETRYABLE_ERRORS = [
     "access denied",
     "blocked system",
     "file does not exist",
+    "source_file_missing",
+    "source file does not exist",
     "exceeds maximum allowed size",
     "exceeds maximum pixel limit",
+    "output_pixel_limit_exceeded",
+    "output pixel limit exceeded",
+    "insufficient_ram_for_output",
+    "insufficient ram",
+    "insufficient_ram",
+    "insufficient disk space",
+    "insufficient_disk_space",
+    "generated output validation failed",
 ]
 
 
@@ -449,28 +460,19 @@ class JobManager:
         elapsed_seconds: Optional[float] = None,
         tile_used: Optional[int] = None,
         is_oom: Optional[bool] = None,
-        force: bool = False
+        force: bool = False,
+        expected_status: Optional[str] = None
     ) -> bool:
         """
-        Safely transition job status following state machine rules.
+        Safely transition job status following atomic state machine rules.
+        Uses single conditional UPDATE transaction to guarantee atomicity and race prevention.
         """
+        if new_status not in ALL_STATUSES:
+            logger.warning(f"Unknown status '{new_status}' for job {job_id}")
+            return False
+
         now = datetime.now().isoformat()
         with self.get_connection() as conn:
-            cur = conn.execute("SELECT status, retry_count, max_retries FROM jobs WHERE id = ?", (job_id,))
-            row = cur.fetchone()
-            if not row:
-                logger.warning(f"Cannot transition status: Job {job_id} not found.")
-                return False
-
-            current_status = row["status"]
-
-            # Validate transition
-            if not force and new_status not in VALID_TRANSITIONS.get(current_status, set()):
-                logger.warning(
-                    f"Invalid status transition for job {job_id}: {current_status} -> {new_status}"
-                )
-                return False
-
             updates = ["status = ?", "updated_at = ?"]
             params: List[Any] = [new_status, now]
 
@@ -506,25 +508,64 @@ class JobManager:
                 updates.append("is_oom = ?")
                 params.append(1 if is_oom else 0)
 
-            if new_status == STATUS_PROCESSING and current_status != STATUS_PROCESSING:
-                updates.append("started_at = ?")
+            if new_status == STATUS_PROCESSING:
+                updates.append("started_at = COALESCE(started_at, ?)")
                 params.append(now)
 
             if new_status == STATUS_COMPLETED:
                 updates.append("completed_at = ?")
                 params.append(now)
-                updates.append("progress = 100")
+                if progress is None:
+                    updates.append("progress = 100")
 
             if new_status == STATUS_CANCELLED:
                 updates.append("cancelled_at = ?")
                 params.append(now)
 
-            params.append(job_id)
-            query = f"UPDATE jobs SET {', '.join(updates)} WHERE id = ?"
-            conn.execute(query, params)
+            # Determine WHERE conditions atomically
+            where_conditions = ["id = ?"]
+            where_params: List[Any] = [job_id]
+
+            if expected_status is not None:
+                where_conditions.append("status = ?")
+                where_params.append(expected_status)
+            elif not force:
+                allowed_sources = [s for s, targets in VALID_TRANSITIONS.items() if new_status in targets]
+                if not allowed_sources:
+                    logger.warning(f"No valid source transitions lead to target status: {new_status}")
+                    return False
+                placeholders = ", ".join("?" for _ in allowed_sources)
+                where_conditions.append(f"status IN ({placeholders})")
+                where_params.extend(allowed_sources)
+            else:
+                # Force transition rules (restricted recovery/admin paths)
+                # Terminal statuses (COMPLETED, CANCELLED) cannot be overwritten
+                if new_status in (STATUS_PROCESSING, STATUS_RETRY_WAIT, STATUS_VALIDATING):
+                    where_conditions.append("status NOT IN (?, ?, ?)")
+                    where_params.extend([STATUS_CANCEL_REQUESTED, STATUS_CANCELLED, STATUS_COMPLETED])
+                elif new_status == STATUS_QUEUED:
+                    where_conditions.append("status NOT IN (?, ?, ?, ?)")
+                    where_params.extend([STATUS_CANCEL_REQUESTED, STATUS_CANCELLED, STATUS_COMPLETED, STATUS_QUEUED])
+                else:
+                    where_conditions.append("status != ?")
+                    where_params.append(new_status)
+
+            sql = f"UPDATE jobs SET {', '.join(updates)} WHERE {' AND '.join(where_conditions)}"
+            cur = conn.execute(sql, params + where_params)
             conn.commit()
 
-        return True
+            if cur.rowcount > 0:
+                return True
+
+            cur_chk = conn.execute("SELECT status FROM jobs WHERE id = ?", (job_id,))
+            row = cur_chk.fetchone()
+            if not row:
+                logger.warning(f"Cannot transition status: Job {job_id} not found.")
+            else:
+                logger.warning(
+                    f"Conditional status transition rejected for job {job_id}: current='{row['status']}' -> new='{new_status}', force={force}"
+                )
+            return False
 
     def update_job_progress(self, job_id: str, progress: int, detail: Optional[str] = None):
         """Update job progress without changing status."""
@@ -543,77 +584,111 @@ class JobManager:
         is_oom: bool = False
     ) -> Tuple[bool, int, str]:
         """
-        Evaluate retry eligibility.
+        Evaluate and atomically schedule retry eligibility.
+        Guarantees that cancellation requests are not overwritten and
+        retry limits are strictly enforced.
         Returns (should_retry: bool, new_retry_count: int, reason: str).
         """
         err_lower = error_message.lower()
         for non_retry in NON_RETRYABLE_ERRORS:
             if non_retry in err_lower:
-                # Permanent failure
+                # Mark failed only if still processing/validating (don't overwrite cancel)
                 self.transition_status(
                     job_id,
                     STATUS_FAILED,
                     error_message=error_message,
                     is_oom=is_oom,
-                    force=True
+                    force=False
                 )
-                return False, 0, f"Non-retryable error: {error_message}"
+                with self.get_connection() as conn:
+                    cur = conn.execute("SELECT retry_count FROM jobs WHERE id = ?", (job_id,))
+                    row = cur.fetchone()
+                    rc = row["retry_count"] if row else 0
+                return False, rc, f"Non-retryable error: {error_message}"
 
+        now = datetime.now().isoformat()
         with self.get_connection() as conn:
-            cur = conn.execute("SELECT retry_count, max_retries FROM jobs WHERE id = ?", (job_id,))
-            row = cur.fetchone()
+            # Atomic conditional UPDATE for retry
+            cur = conn.execute("""
+                UPDATE jobs SET
+                    status = ?,
+                    retry_count = retry_count + 1,
+                    error_message = ?,
+                    is_oom = ?,
+                    updated_at = ?
+                WHERE id = ?
+                  AND retry_count < max_retries
+                  AND status IN (?, ?, ?)
+            """, (STATUS_RETRY_WAIT, error_message, 1 if is_oom else 0, now, job_id, STATUS_PROCESSING, STATUS_VALIDATING, STATUS_QUEUED))
+            conn.commit()
+
+            if cur.rowcount > 0:
+                cur_after = conn.execute("SELECT retry_count, max_retries FROM jobs WHERE id = ?", (job_id,))
+                row_after = cur_after.fetchone()
+                new_retry = row_after["retry_count"]
+                max_retries = row_after["max_retries"]
+                return True, new_retry, f"Retry scheduled ({new_retry}/{max_retries})"
+
+            cur_chk = conn.execute("SELECT status, retry_count, max_retries FROM jobs WHERE id = ?", (job_id,))
+            row = cur_chk.fetchone()
             if not row:
                 return False, 0, "Job not found"
 
+            current_status = row["status"]
             retry_count = row["retry_count"]
             max_retries = row["max_retries"]
 
-            if retry_count < max_retries:
-                new_retry = retry_count + 1
-                now = datetime.now().isoformat()
-                conn.execute("""
-                    UPDATE jobs SET
-                        status = ?,
-                        retry_count = ?,
-                        error_message = ?,
-                        is_oom = ?,
-                        updated_at = ?
-                    WHERE id = ?
-                """, (STATUS_RETRY_WAIT, new_retry, error_message, 1 if is_oom else 0, now, job_id))
-                conn.commit()
-                return True, new_retry, f"Retry scheduled ({new_retry}/{max_retries})"
-            else:
+            if current_status in (STATUS_CANCEL_REQUESTED, STATUS_CANCELLED):
+                return False, retry_count, f"Job was cancelled ({current_status}); retry aborted"
+
+            if retry_count >= max_retries:
                 final_msg = f"{error_message} (Max retries {max_retries} exceeded)"
                 self.transition_status(
                     job_id,
                     STATUS_FAILED,
                     error_message=final_msg,
                     is_oom=is_oom,
-                    force=True
+                    force=False
                 )
                 return False, retry_count, final_msg
 
+            return False, retry_count, f"Job in ineligible status '{current_status}' for retry"
+
     def cancel_job(self, job_id: str) -> bool:
-        """Request cancellation for a job."""
+        """Request cancellation for a job atomically."""
+        now = datetime.now().isoformat()
         with self.get_connection() as conn:
+            # 1. Try immediate cancel if in queued or retry-wait
+            cur = conn.execute("""
+                UPDATE jobs SET
+                    status = ?,
+                    cancelled_at = ?,
+                    updated_at = ?
+                WHERE id = ? AND status IN (?, ?)
+            """, (STATUS_CANCELLED, now, now, job_id, STATUS_QUEUED, STATUS_RETRY_WAIT))
+            if cur.rowcount > 0:
+                conn.commit()
+                return True
+
+            # 2. Try cooperative cancel request if in processing or validating
+            cur = conn.execute("""
+                UPDATE jobs SET
+                    status = ?,
+                    updated_at = ?
+                WHERE id = ? AND status IN (?, ?)
+            """, (STATUS_CANCEL_REQUESTED, now, job_id, STATUS_PROCESSING, STATUS_VALIDATING))
+            if cur.rowcount > 0:
+                conn.commit()
+                return True
+
+            # 3. Check if already cancelled or cancel requested
             cur = conn.execute("SELECT status FROM jobs WHERE id = ?", (job_id,))
             row = cur.fetchone()
             if not row:
                 return False
-
-            st = row["status"]
-            if st in (STATUS_COMPLETED, STATUS_CANCELLED):
-                return False
-
-            if st in (STATUS_QUEUED, STATUS_RETRY_WAIT):
-                # Cancel immediately
-                return self.transition_status(job_id, STATUS_CANCELLED, force=True)
-
-            if st in (STATUS_PROCESSING, STATUS_VALIDATING):
-                # Set cancel requested flag for cooperative abort
-                return self.transition_status(job_id, STATUS_CANCEL_REQUESTED, force=True)
-
-        return True
+            if row["status"] in (STATUS_CANCEL_REQUESTED, STATUS_CANCELLED):
+                return True
+            return False
 
     def cancel_all_pending(self) -> int:
         """Cancel all pending, validating, and retry-wait jobs."""
@@ -639,19 +714,40 @@ class JobManager:
 
         return cancelled_count
 
+    def is_valid_source_file(self, file_path: Optional[Union[str, Path]]) -> bool:
+        """
+        Verify whether the source path:
+        1. Is present (not None/empty)
+        2. Is a regular file (not a directory)
+        3. Is readable by the current process
+        """
+        if not file_path:
+            return False
+        try:
+            p = Path(file_path)
+            if not p.is_absolute():
+                base_dir = self.db_path.parent.parent
+                p = (base_dir / p).resolve()
+            return p.is_file() and os.access(str(p), os.R_OK)
+        except Exception:
+            return False
+
     def recover_on_startup(self, validator_func: Optional[Any] = None) -> Dict[str, Any]:
         """
         Crash recovery executed on server boot:
         1. Identifies jobs interrupted in PROCESSING or VALIDATING.
-        2. Inspects disk for completed valid output.
+        2. Inspects disk for completed valid output (requires full image validation).
         3. Cleans up orphaned .tmp files safely.
-        4. Recovers jobs to COMPLETED or QUEUED/RETRY_WAIT.
+        4. Recovers jobs to COMPLETED or QUEUED/FAILED (rejecting missing source).
+        5. Recovers RETRY_WAIT jobs according to retry policy (rejecting missing source).
+        6. Finalizes CANCEL_REQUESTED jobs to CANCELLED.
+        7. Returns list of eligible QUEUED job IDs for deterministic queue restoration (filtering out missing source).
         """
         logger.info("Executing Phase 3 Startup Job Recovery...")
         recovered_jobs = []
 
         with self.get_connection() as conn:
-            # 1. Inspect uncompleted PROCESSING jobs
+            # 1. Inspect uncompleted PROCESSING and VALIDATING jobs
             cur = conn.execute(
                 "SELECT * FROM jobs WHERE status IN (?, ?)",
                 (STATUS_PROCESSING, STATUS_VALIDATING)
@@ -660,6 +756,7 @@ class JobManager:
 
             for row in interrupted_rows:
                 jid = row["id"]
+                in_path_str = row["input_path"]
                 out_path_str = row["output_path"]
                 retries = row["retry_count"]
                 max_retries = row["max_retries"]
@@ -669,10 +766,14 @@ class JobManager:
                     out_p = Path(out_path_str)
                     if out_p.is_file() and out_p.stat().st_size > 0:
                         if validator_func:
-                            is_valid, _, _, _ = validator_func(out_p)
-                            is_complete = is_valid
+                            try:
+                                is_valid, _, _, _ = validator_func(out_p)
+                                is_complete = bool(is_valid)
+                            except Exception:
+                                is_complete = False
                         else:
-                            is_complete = True
+                            # Avoid marking a job COMPLETED solely because a nonempty file exists
+                            is_complete = False
 
                 if is_complete:
                     logger.info(f"Recovery: Job {jid} found valid output on disk. Marking COMPLETED.")
@@ -688,7 +789,16 @@ class JobManager:
                             except Exception:
                                 pass
 
-                    if retries < max_retries:
+                    if not self.is_valid_source_file(in_path_str):
+                        logger.warning(f"Recovery: Job {jid} source file missing or invalid ({in_path_str}). Marking FAILED.")
+                        self.transition_status(
+                            jid,
+                            STATUS_FAILED,
+                            error_message="SOURCE_FILE_MISSING: Source file is missing, not a regular file, or unreadable.",
+                            force=True
+                        )
+                        recovered_jobs.append({"id": jid, "action": "marked_failed_missing_source"})
+                    elif retries < max_retries:
                         logger.info(f"Recovery: Job {jid} interrupted mid-process. Re-queueing for retry.")
                         self.transition_status(
                             jid,
@@ -725,10 +835,72 @@ class JobManager:
                 self.transition_status(jid, STATUS_CANCELLED, force=True)
                 recovered_jobs.append({"id": jid, "action": "cancelled"})
 
-        logger.info(f"Startup Recovery completed: {len(recovered_jobs)} jobs processed.")
+            # 3. Recover RETRY_WAIT jobs according to retry policy
+            cur_retry = conn.execute(
+                "SELECT id, input_path, retry_count, max_retries FROM jobs WHERE status = ?",
+                (STATUS_RETRY_WAIT,)
+            )
+            for row in cur_retry.fetchall():
+                jid = row["id"]
+                in_path_str = row["input_path"]
+                retries = row["retry_count"]
+                max_retries = row["max_retries"]
+
+                if not self.is_valid_source_file(in_path_str):
+                    logger.warning(f"Recovery: RETRY_WAIT Job {jid} source file missing or invalid ({in_path_str}). Marking FAILED.")
+                    self.transition_status(
+                        jid,
+                        STATUS_FAILED,
+                        error_message="SOURCE_FILE_MISSING: Source file is missing, not a regular file, or unreadable.",
+                        force=True
+                    )
+                    recovered_jobs.append({"id": jid, "action": "marked_failed_missing_source"})
+                elif retries < max_retries:
+                    logger.info(f"Recovery: Job {jid} in RETRY_WAIT re-queued.")
+                    self.transition_status(
+                        jid,
+                        STATUS_QUEUED,
+                        error_message="Recovered from RETRY_WAIT; re-queued.",
+                        force=True
+                    )
+                    recovered_jobs.append({"id": jid, "action": "requeued"})
+                else:
+                    logger.info(f"Recovery: Job {jid} in RETRY_WAIT exceeded max retries. Marking FAILED.")
+                    self.transition_status(
+                        jid,
+                        STATUS_FAILED,
+                        error_message="Interrupted in RETRY_WAIT; max retries exceeded.",
+                        force=True
+                    )
+                    recovered_jobs.append({"id": jid, "action": "marked_failed"})
+
+            # 4. Collect all eligible QUEUED jobs in deterministic order, filtering out missing sources
+            cur_queued = conn.execute(
+                "SELECT id, input_path FROM jobs WHERE status = ? ORDER BY created_at ASC",
+                (STATUS_QUEUED,)
+            )
+            queued_rows = cur_queued.fetchall()
+            eligible_job_ids = []
+            for r in queued_rows:
+                jid = r["id"]
+                in_path_str = r["input_path"]
+                if not self.is_valid_source_file(in_path_str):
+                    logger.warning(f"Recovery: QUEUED Job {jid} source file missing or invalid ({in_path_str}). Marking FAILED.")
+                    self.transition_status(
+                        jid,
+                        STATUS_FAILED,
+                        error_message="SOURCE_FILE_MISSING: Source file is missing, not a regular file, or unreadable.",
+                        force=True
+                    )
+                    recovered_jobs.append({"id": jid, "action": "marked_failed_missing_source"})
+                else:
+                    eligible_job_ids.append(jid)
+
+        logger.info(f"Startup Recovery completed: {len(recovered_jobs)} jobs processed, {len(eligible_job_ids)} queued jobs eligible.")
         return {
             "recovered_count": len(recovered_jobs),
-            "details": recovered_jobs
+            "details": recovered_jobs,
+            "eligible_job_ids": eligible_job_ids
         }
 
     def is_cancellation_requested(self, job_id: str) -> bool:
@@ -739,6 +911,148 @@ class JobManager:
             if not row:
                 return False
             return row["status"] in (STATUS_CANCEL_REQUESTED, STATUS_CANCELLED)
+
+    def create_retry_job(
+        self,
+        parent_job_id: str,
+        custom_config: Optional[Dict[str, Any]] = None,
+        allow_reprocess: bool = False
+    ) -> Tuple[bool, Optional[str], Optional[str]]:
+        """
+        Non-destructively create a new child retry job for a failed or cancelled job,
+        preserving the historical parent job and error record completely immutable.
+        
+        Uses BEGIN IMMEDIATE transaction locking for strict concurrent race prevention,
+        verifies that no active or completed child job already exists, records full
+        parent-child lineage, and inserts a new QUEUED child job record.
+        
+        Returns:
+            (success: bool, job_id_or_none: Optional[str], message_or_error: Optional[str])
+        """
+        with self.get_connection() as conn:
+            try:
+                # Exclusive lock to guarantee concurrency safety
+                conn.execute("BEGIN IMMEDIATE")
+                
+                # 1. Fetch parent job
+                cur = conn.execute("""
+                    SELECT id, batch_id, filename, input_path, output_path, status,
+                           dimensions, file_size, max_retries, processing_config
+                    FROM jobs WHERE id = ?
+                """, (parent_job_id,))
+                parent = cur.fetchone()
+                if not parent:
+                    conn.rollback()
+                    return False, None, f"Parent job {parent_job_id} not found"
+                
+                parent_status = parent["status"]
+                input_path = parent["input_path"]
+                
+                # Active parent check
+                if parent_status in (STATUS_QUEUED, STATUS_PROCESSING, STATUS_RETRY_WAIT, STATUS_VALIDATING):
+                    conn.rollback()
+                    return False, parent_job_id, f"Parent job is currently active ({parent_status})"
+                
+                # 2. Check for existing active job on this input path
+                cur = conn.execute("""
+                    SELECT id, status FROM jobs
+                    WHERE input_path = ? AND status IN (?, ?, ?, ?)
+                    LIMIT 1
+                """, (input_path, STATUS_QUEUED, STATUS_PROCESSING, STATUS_RETRY_WAIT, STATUS_VALIDATING))
+                active_job = cur.fetchone()
+                if active_job:
+                    conn.rollback()
+                    return False, active_job["id"], f"Job {active_job['id']} is already active for this image"
+                
+                # 3. Check for existing completed job on this image
+                if not allow_reprocess:
+                    cur = conn.execute("""
+                        SELECT id, status FROM jobs
+                        WHERE input_path = ? AND status = ?
+                        LIMIT 1
+                    """, (input_path, STATUS_COMPLETED))
+                    completed_job = cur.fetchone()
+                    if completed_job:
+                        conn.rollback()
+                        return False, completed_job["id"], f"Image has already been successfully enhanced by job {completed_job['id']}"
+                
+                # 4. Check lineage: has this parent already been retried?
+                cur = conn.execute("""
+                    SELECT id, status FROM jobs
+                    WHERE processing_config LIKE '%\"parent_job_id\": \"' || ? || '\"%'
+                    ORDER BY created_at DESC LIMIT 1
+                """, (parent_job_id,))
+                child = cur.fetchone()
+                if child:
+                    child_id = child["id"]
+                    child_status = child["status"]
+                    if child_status in (STATUS_QUEUED, STATUS_PROCESSING, STATUS_RETRY_WAIT, STATUS_VALIDATING):
+                        conn.rollback()
+                        return True, child_id, f"Retry job {child_id} is already in progress"
+                    elif child_status == STATUS_COMPLETED:
+                        conn.rollback()
+                        return False, child_id, f"Image has already been completed by retry job {child_id}"
+                    elif child_status in (STATUS_FAILED, STATUS_CANCELLED):
+                        conn.rollback()
+                        return False, child_id, f"Retry already attempted as job {child_id}. Please retry from latest child job."
+                
+                # 5. Build child job record
+                new_job_id = str(uuid.uuid4())
+                now = datetime.now().isoformat()
+                
+                # Build processing_config preserving parent settings and adding parent_job_id
+                cfg = {}
+                if parent["processing_config"]:
+                    try:
+                        cfg = json.loads(parent["processing_config"])
+                    except Exception:
+                        cfg = {}
+                if custom_config:
+                    cfg.update(custom_config)
+                cfg["parent_job_id"] = parent_job_id
+                cfg["is_retry"] = True
+                cfg_json = json.dumps(cfg)
+                
+                # Insert child job as QUEUED without touching parent row
+                conn.execute("""
+                    INSERT INTO jobs (
+                        id, batch_id, filename, input_path, output_path, status,
+                        progress, retry_count, max_retries, error_message, is_oom,
+                        processing_config, dimensions, output_dimensions, file_size, output_size,
+                        elapsed_seconds, tile_used, created_at, started_at, updated_at,
+                        completed_at, cancelled_at
+                    ) VALUES (
+                        ?, ?, ?, ?, NULL, ?,
+                        0, 0, ?, NULL, 0,
+                        ?, ?, NULL, ?, 0,
+                        0.0, NULL, ?, NULL, ?,
+                        NULL, NULL
+                    )
+                """, (
+                    new_job_id,
+                    parent["batch_id"],
+                    parent["filename"],
+                    input_path,
+                    STATUS_QUEUED,
+                    parent["max_retries"] or 3,
+                    cfg_json,
+                    parent["dimensions"],
+                    parent["file_size"] or 0,
+                    now,
+                    now
+                ))
+                
+                conn.commit()
+                return True, new_job_id, f"Created retry job {new_job_id} for parent {parent_job_id}"
+                
+            except sqlite3.OperationalError as oe:
+                conn.rollback()
+                if "locked" in str(oe).lower() or "busy" in str(oe).lower():
+                    return False, None, "Database is locked by concurrent transaction"
+                raise oe
+            except Exception as e:
+                conn.rollback()
+                raise e
 
     def reset_for_retry(self, job_id: str) -> bool:
         """Reset a failed, cancelled, or retry-wait job to QUEUED state for a new run."""

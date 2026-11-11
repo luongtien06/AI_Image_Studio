@@ -14,6 +14,7 @@ import json
 import time
 import shutil
 import unittest
+import uuid
 import io
 from pathlib import Path
 from PIL import Image
@@ -121,7 +122,7 @@ class TestPreflightRemediation(unittest.TestCase):
         over_limit = self.test_dir / "over_limit.png"
         im = Image.new('1', (5001, 5000), color=1)
         im.save(over_limit, format='PNG')
-        valid, reason, dims, _ = validate_image_file(over_limit)
+        valid, reason, dims, _ = validate_image_file(over_limit, max_pixels=25000000)
         self.assertFalse(valid, "Image over 25M pixels should be rejected!")
         self.assertIn("exceeds maximum pixel limit", reason.lower())
         self.assertIn("25,005,000 pixels", reason)
@@ -265,8 +266,9 @@ class TestPreflightRemediation(unittest.TestCase):
 
     def test_15_history_atomic_save_and_backup(self):
         """Test atomic writing and backup creation of history.json."""
+        test_jid = f"atomic-test-{uuid.uuid4().hex[:8]}"
         test_entry = {
-            'job_id': 'atomic-test-01',
+            'job_id': test_jid,
             'filename': 'atomic.png',
             'status': 'completed',
             'input_path': 'uploads/atomic.png',
@@ -283,7 +285,7 @@ class TestPreflightRemediation(unittest.TestCase):
         # Verify content loaded back
         loaded = load_history(resolve_paths=False)
         self.assertGreater(len(loaded), 0)
-        self.assertEqual(loaded[0]['job_id'], 'atomic-test-01')
+        self.assertEqual(loaded[0]['job_id'], test_jid)
         self.assertEqual(loaded[0]['rel_input_path'], 'uploads/atomic.png')
         print("[PASS] Fix 3.3: History saved atomically with relative path and backup")
 

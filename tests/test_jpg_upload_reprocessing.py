@@ -305,8 +305,8 @@ class TestJpgUploadReprocessing(unittest.TestCase):
         im = Image.new("RGB", (10000, 5000), color=(120, 120, 120))
         im.save(p, format="JPEG", quality=80)
 
-        # Under default 25M limit, it's rejected with category 'too_large'
-        res_default = validate_image_file(p)
+        # Under 25M limit, it's rejected with category 'too_large'
+        res_default = validate_image_file(p, max_pixels=25000000)
         self.assertFalse(res_default.is_valid)
         self.assertEqual(res_default.category, "too_large")
         self.assertIn("maximum pixel limit", res_default.reason)

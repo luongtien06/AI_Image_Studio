@@ -1,0 +1,54 @@
+{
+  "created_at": "2026-11-10T20:08:19.601986",
+  "backup_directory": "E:\\AI Image Studio\\RealESRGAN-v030\\backups\\operational_smoke_test_20261110_200819",
+  "files": {
+    "data\\jobs.db": {
+      "source_path": "E:\\AI Image Studio\\RealESRGAN-v030\\data\\jobs.db",
+      "backup_path": "E:\\AI Image Studio\\RealESRGAN-v030\\backups\\operational_smoke_test_20261110_200819\\data\\jobs.db",
+      "size_bytes": 405504,
+      "sha256": "2e0586ef0355d2c3c8ca98fd2b9472735529ba6dc973a0d66e4a5e9f6bc76391"
+    },
+    "logs\\history.json": {
+      "source_path": "E:\\AI Image Studio\\RealESRGAN-v030\\logs\\history.json",
+      "backup_path": "E:\\AI Image Studio\\RealESRGAN-v030\\backups\\operational_smoke_test_20261110_200819\\logs\\history.json",
+      "size_bytes": 181891,
+      "sha256": "e87fea2dcbc30b93858709b92d9eae991b710ea293ebe7fc61ee6185badf08c8"
+    },
+    "config.json": {
+      "source_path": "E:\\AI Image Studio\\RealESRGAN-v030\\config.json",
+      "backup_path": "E:\\AI Image Studio\\RealESRGAN-v030\\backups\\operational_smoke_test_20261110_200819\\config.json",
+      "size_bytes": 2170,
+      "sha256": "2ca80672e08077ef27e9ef5e9a6081b3259f518304608fd002ebca32c8241773"
+    },
+    "app.py": {
+      "source_path": "E:\\AI Image Studio\\RealESRGAN-v030\\app.py",
+      "backup_path": "E:\\AI Image Studio\\RealESRGAN-v030\\backups\\operational_smoke_test_20261110_200819\\app.py",
+      "size_bytes": 126666,
+      "sha256": "0fd2fea0a041aa0e8098274e030618c6ae31f4e059c5f75fd3269c3e27971d60"
+    },
+    "job_manager.py": {
+      "source_path": "E:\\AI Image Studio\\RealESRGAN-v030\\job_manager.py",
+      "backup_path": "E:\\AI Image Studio\\RealESRGAN-v030\\backups\\operational_smoke_test_20261110_200819\\job_manager.py",
+      "size_bytes": 41019,
+      "sha256": "2a87ac8d9b02d303c36964bd1abf9d820b7fcfcbdc37cdfa43457d4ae835e92f"
+    },
+    "ai_worker.py": {
+      "source_path": "E:\\AI Image Studio\\RealESRGAN-v030\\ai_worker.py",
+      "backup_path": "E:\\AI Image Studio\\RealESRGAN-v030\\backups\\operational_smoke_test_20261110_200819\\ai_worker.py",
+      "size_bytes": 25981,
+      "sha256": "8d05ea2db2673fd32423c3092bf121d5308d3533f8fe1763490d6131bbaa7206"
+    },
+    "video\\video_job_manager.py": {
+      "source_path": "E:\\AI Image Studio\\RealESRGAN-v030\\video\\video_job_manager.py",
+      "backup_path": "E:\\AI Image Studio\\RealESRGAN-v030\\backups\\operational_smoke_test_20261110_200819\\video\\video_job_manager.py",
+      "size_bytes": 21071,
+      "sha256": "012fc9a89f5cb23a48a7ec7c8fbd6382f84ce0761c1785fd0d67028653d6e0d5"
+    },
+    "video\\video_pipeline.py": {
+      "source_path": "E:\\AI Image Studio\\RealESRGAN-v030\\video\\video_pipeline.py",
+      "backup_path": "E:\\AI Image Studio\\RealESRGAN-v030\\backups\\operational_smoke_test_20261110_200819\\video\\video_pipeline.py",
+      "size_bytes": 18425,
+      "sha256": "6a87b7378d4ca89464eb08b96de7e81a02fa3fb20fffadc492b67498b458c327"
+    }
+  }
+}

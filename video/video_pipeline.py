@@ -98,7 +98,7 @@ class VideoPipeline:
         self._pause_events: Dict[str, threading.Event] = {}
         self._cancel_events: Dict[str, threading.Event] = {}
         self._active_threads: Dict[str, threading.Thread] = {}
-        self._lock = threading.Lock()
+        self._lock = threading.RLock()
 
     def get_pause_event(self, job_id: str) -> threading.Event:
         with self._lock:
@@ -122,13 +122,34 @@ class VideoPipeline:
         return False
 
     def cancel_job(self, job_id: str) -> bool:
-        """Signal job to cancel."""
+        """Signal job to cancel cleanly and set event."""
         with self._lock:
-            if job_id in self._cancel_events:
-                self._cancel_events[job_id].set()
-                logger.info(f"Cancel signal set for video job {job_id}")
-                return True
-        return False
+            evt = self.get_cancel_event(job_id)
+            evt.set()
+            logger.info(f"Cancel signal set for video job {job_id}")
+            try:
+                self.job_mgr.transition_status(job_id, STATUS_CANCEL_REQUESTED)
+            except Exception:
+                pass
+            return True
+
+    def is_job_running(self, job_id: str) -> bool:
+        """Check if a worker thread is actively executing this video job."""
+        with self._lock:
+            th = self._active_threads.get(job_id)
+            return bool(th and th.is_alive())
+
+    def wait_for_job_stopped(self, job_id: str, timeout: float = 10.0) -> bool:
+        """
+        Wait until active execution of job_id stops.
+        Returns True if stopped, False if timed out.
+        """
+        with self._lock:
+            th = self._active_threads.get(job_id)
+        if not th or not th.is_alive():
+            return True
+        th.join(timeout=timeout)
+        return not th.is_alive()
 
     def run_job(
         self,

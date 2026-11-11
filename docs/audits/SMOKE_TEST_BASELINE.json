@@ -1,0 +1,672 @@
+{
+  "timestamp": "2026-11-10T20:08:19.465546",
+  "database_path": "E:\\AI Image Studio\\RealESRGAN-v030\\data\\jobs.db",
+  "database_sha256": "2e0586ef0355d2c3c8ca98fd2b9472735529ba6dc973a0d66e4a5e9f6bc76391",
+  "database_size_bytes": 405504,
+  "total_jobs": 238,
+  "status_counts": {
+    "CANCELLED": 15,
+    "CANCEL_REQUESTED": 1,
+    "COMPLETED": 1,
+    "FAILED": 221
+  },
+  "protected_orphan_job_count": 82,
+  "protected_orphan_jobs": [
+    {
+      "job_id": "batch-bad-job",
+      "status": "FAILED",
+      "retry_count": 0,
+      "original_filename": "batch_truncated.png",
+      "source_path": "E:\\AI\\RealESRGAN-v030\\tests\\scratch_preflight\\batch_truncated.png",
+      "output_path": null
+    },
+    {
+      "job_id": "026118a7-d621-4625-b315-1369ff316b17",
+      "status": "FAILED",
+      "retry_count": 0,
+      "original_filename": "batch_corrupt.png",
+      "source_path": "E:\\AI\\RealESRGAN-v030\\tests\\scratch_phase1\\batch_corrupt.png",
+      "output_path": null
+    },
+    {
+      "job_id": "a11eb3c3-98bc-4da1-a3d9-2507bba55e82",
+      "status": "FAILED",
+      "retry_count": 0,
+      "original_filename": "batch_corrupt.png",
+      "source_path": "E:\\AI\\RealESRGAN-v030\\tests\\scratch_phase1\\batch_corrupt.png",
+      "output_path": null
+    },
+    {
+      "job_id": "51dd63c2-43b2-4476-90b3-2eb0055e2129",
+      "status": "FAILED",
+      "retry_count": 0,
+      "original_filename": "batch_corrupt.png",
+      "source_path": "E:\\AI\\RealESRGAN-v030\\tests\\scratch_phase1\\batch_corrupt.png",
+      "output_path": null
+    },
+    {
+      "job_id": "eb2cb65a-ed31-4315-b0ec-2573ad4fb55b",
+      "status": "FAILED",
+      "retry_count": 0,
+      "original_filename": "batch_corrupt.png",
+      "source_path": "E:\\AI\\RealESRGAN-v030\\tests\\scratch_phase1\\batch_corrupt.png",
+      "output_path": null
+    },
+    {
+      "job_id": "65f34cb6-d00a-4a88-b8c4-4358df77978f",
+      "status": "FAILED",
+      "retry_count": 0,
+      "original_filename": "batch_corrupt.png",
+      "source_path": "E:\\AI Image Studio\\RealESRGAN-v030\\tests\\scratch_phase1\\batch_corrupt.png",
+      "output_path": null
+    },
+    {
+      "job_id": "aa17fab8-5d22-46ec-b8a8-e48f170ba86b",
+      "status": "FAILED",
+      "retry_count": 0,
+      "original_filename": "batch_corrupt.png",
+      "source_path": "E:\\AI Image Studio\\RealESRGAN-v030\\tests\\scratch_phase1\\batch_corrupt.png",
+      "output_path": null
+    },
+    {
+      "job_id": "e4196217-fd9d-4c16-880f-57b47a4b759e",
+      "status": "FAILED",
+      "retry_count": 0,
+      "original_filename": "batch_corrupt.png",
+      "source_path": "E:\\AI Image Studio\\RealESRGAN-v030\\tests\\scratch_phase1\\batch_corrupt.png",
+      "output_path": null
+    },
+    {
+      "job_id": "dbb96a22-6fc3-4bb4-9a4d-29c3c35f82b5",
+      "status": "FAILED",
+      "retry_count": 0,
+      "original_filename": "batch_corrupt.png",
+      "source_path": "E:\\AI Image Studio\\RealESRGAN-v030\\tests\\scratch_phase1\\batch_corrupt.png",
+      "output_path": null
+    },
+    {
+      "job_id": "f703b4f7-1539-494c-a0c4-a0325e2bea02",
+      "status": "FAILED",
+      "retry_count": 0,
+      "original_filename": "batch_corrupt.png",
+      "source_path": "E:\\AI Image Studio\\RealESRGAN-v030\\tests\\scratch_phase1\\batch_corrupt.png",
+      "output_path": null
+    },
+    {
+      "job_id": "afad7bb8-0312-4a74-bd50-83c2d5236480",
+      "status": "FAILED",
+      "retry_count": 0,
+      "original_filename": "batch_corrupt.png",
+      "source_path": "E:\\AI Image Studio\\RealESRGAN-v030\\tests\\scratch_phase1\\batch_corrupt.png",
+      "output_path": null
+    },
+    {
+      "job_id": "11e62704-d0e6-4925-9736-8a6068f20189",
+      "status": "FAILED",
+      "retry_count": 0,
+      "original_filename": "batch_img.png",
+      "source_path": "C:\\Users\\Asus\\AppData\\Local\\Temp\\test_folder_browser_y5hoaje4\\batch_input_folder\\batch_img.png",
+      "output_path": null
+    },
+    {
+      "job_id": "6d108bf4-0e17-4c75-90ca-24960d43d280",
+      "status": "FAILED",
+      "retry_count": 0,
+      "original_filename": "batch_corrupt.png",
+      "source_path": "E:\\AI Image Studio\\RealESRGAN-v030\\tests\\scratch_phase1\\batch_corrupt.png",
+      "output_path": null
+    },
+    {
+      "job_id": "f0cfc5ed-ef3a-42f3-8ef6-1e1151aaa231",
+      "status": "FAILED",
+      "retry_count": 0,
+      "original_filename": "batch_corrupt.png",
+      "source_path": "E:\\AI Image Studio\\RealESRGAN-v030\\tests\\scratch_phase1\\batch_corrupt.png",
+      "output_path": null
+    },
+    {
+      "job_id": "2f4c917a-9b28-43df-ad6e-17e0c64013a6",
+      "status": "FAILED",
+      "retry_count": 0,
+      "original_filename": "batch_corrupt.png",
+      "source_path": "E:\\AI Image Studio\\RealESRGAN-v030\\tests\\scratch_phase1\\batch_corrupt.png",
+      "output_path": null
+    },
+    {
+      "job_id": "5c00ac0c-b8b1-4c99-9d75-24d5353f9ee1",
+      "status": "FAILED",
+      "retry_count": 0,
+      "original_filename": "batch_corrupt.png",
+      "source_path": "E:\\AI Image Studio\\RealESRGAN-v030\\tests\\scratch_phase1\\batch_corrupt.png",
+      "output_path": null
+    },
+    {
+      "job_id": "54cfc797-54f9-467c-987e-37c7058fdfa0",
+      "status": "FAILED",
+      "retry_count": 1,
+      "original_filename": "batch_img.png",
+      "source_path": "C:\\Users\\Asus\\AppData\\Local\\Temp\\test_folder_browser_cjcg3q6w\\batch_input_folder\\batch_img.png",
+      "output_path": null
+    },
+    {
+      "job_id": "0453a5a5-7b2b-4b5e-9d29-372cc2ebd70d",
+      "status": "FAILED",
+      "retry_count": 0,
+      "original_filename": "normal_1080p.jpg",
+      "source_path": "E:\\AI Image Studio\\RealESRGAN-v030\\uploads\\normal_1080p.jpg",
+      "output_path": null
+    },
+    {
+      "job_id": "45a1398c-9a5c-4652-84a6-5f64b152ad5a",
+      "status": "FAILED",
+      "retry_count": 0,
+      "original_filename": "photo_approx_4mb.jpg",
+      "source_path": "E:\\AI Image Studio\\RealESRGAN-v030\\uploads\\photo_approx_4mb.jpg",
+      "output_path": null
+    },
+    {
+      "job_id": "ca476227-d914-4599-ae14-4f8e7b62a5fc",
+      "status": "FAILED",
+      "retry_count": 0,
+      "original_filename": "realesrgan_4160x6400.jpg",
+      "source_path": "E:\\AI Image Studio\\RealESRGAN-v030\\uploads\\realesrgan_4160x6400.jpg",
+      "output_path": null
+    },
+    {
+      "job_id": "d4a52e4b-ffec-4d21-9ece-d7f8ad0dfe2a",
+      "status": "FAILED",
+      "retry_count": 0,
+      "original_filename": "realesrgan_11520x9712.jpg",
+      "source_path": "E:\\AI Image Studio\\RealESRGAN-v030\\uploads\\realesrgan_11520x9712.jpg",
+      "output_path": null
+    },
+    {
+      "job_id": "ccbd75fc-4989-4105-af19-dafd83d84b3d",
+      "status": "FAILED",
+      "retry_count": 0,
+      "original_filename": "reprocess_source.png",
+      "source_path": "E:\\AI Image Studio\\RealESRGAN-v030\\uploads\\reprocess_source.png",
+      "output_path": null
+    },
+    {
+      "job_id": "ed8ac1f9-a431-4472-af45-01b7a2c89db2",
+      "status": "FAILED",
+      "retry_count": 0,
+      "original_filename": "reprocess_source.png",
+      "source_path": "E:\\AI Image Studio\\RealESRGAN-v030\\uploads\\reprocess_source.png",
+      "output_path": null
+    },
+    {
+      "job_id": "66fae794-732f-4f7d-9bdf-a5468a2a207a",
+      "status": "FAILED",
+      "retry_count": 0,
+      "original_filename": "reprocess_source_1.png",
+      "source_path": "E:\\AI Image Studio\\RealESRGAN-v030\\uploads\\reprocess_source_1.png",
+      "output_path": null
+    },
+    {
+      "job_id": "fb1f3125-2bc9-496b-8a7d-ca122bd157b4",
+      "status": "FAILED",
+      "retry_count": 0,
+      "original_filename": "reprocess_source_1.png",
+      "source_path": "E:\\AI Image Studio\\RealESRGAN-v030\\uploads\\reprocess_source_1.png",
+      "output_path": null
+    },
+    {
+      "job_id": "bb9f3edc-c6df-41ad-aac4-5200209d5bd5",
+      "status": "FAILED",
+      "retry_count": 0,
+      "original_filename": "reprocess_source_1.png",
+      "source_path": "E:\\AI Image Studio\\RealESRGAN-v030\\uploads\\reprocess_source_1.png",
+      "output_path": null
+    },
+    {
+      "job_id": "395bd34a-5c11-468c-abfa-8c2e6c66e85b",
+      "status": "FAILED",
+      "retry_count": 0,
+      "original_filename": "reprocess_source_1.png",
+      "source_path": "E:\\AI Image Studio\\RealESRGAN-v030\\uploads\\reprocess_source_1.png",
+      "output_path": null
+    },
+    {
+      "job_id": "52cf560c-7c3b-44ab-afd8-b7bdea8e0f47",
+      "status": "FAILED",
+      "retry_count": 0,
+      "original_filename": "reprocess_source_1.png",
+      "source_path": "E:\\AI Image Studio\\RealESRGAN-v030\\uploads\\reprocess_source_1.png",
+      "output_path": null
+    },
+    {
+      "job_id": "9ea73bcb-27e1-4363-8010-fd560e874967",
+      "status": "FAILED",
+      "retry_count": 0,
+      "original_filename": "reprocess_source_1.png",
+      "source_path": "E:\\AI Image Studio\\RealESRGAN-v030\\uploads\\reprocess_source_1.png",
+      "output_path": null
+    },
+    {
+      "job_id": "40c55aac-98e3-41d4-adca-82047ea6efdd",
+      "status": "FAILED",
+      "retry_count": 0,
+      "original_filename": "reprocess_source_1.png",
+      "source_path": "E:\\AI Image Studio\\RealESRGAN-v030\\uploads\\reprocess_source_1.png",
+      "output_path": null
+    },
+    {
+      "job_id": "57d2292a-54b4-41a1-ae82-5a37ccf3bb03",
+      "status": "FAILED",
+      "retry_count": 0,
+      "original_filename": "reprocess_source_2.png",
+      "source_path": "E:\\AI Image Studio\\RealESRGAN-v030\\uploads\\reprocess_source_2.png",
+      "output_path": null
+    },
+    {
+      "job_id": "3b69723d-dfb7-4982-8d7a-eb265bd6e1df",
+      "status": "FAILED",
+      "retry_count": 0,
+      "original_filename": "reprocess_source_2.png",
+      "source_path": "E:\\AI Image Studio\\RealESRGAN-v030\\uploads\\reprocess_source_2.png",
+      "output_path": null
+    },
+    {
+      "job_id": "673fb316-ff33-4988-b12b-80269c00015c",
+      "status": "FAILED",
+      "retry_count": 0,
+      "original_filename": "reprocess_source_2.png",
+      "source_path": "E:\\AI Image Studio\\RealESRGAN-v030\\uploads\\reprocess_source_2.png",
+      "output_path": null
+    },
+    {
+      "job_id": "e4b2ca5e-1bdb-4d42-a2f9-3d3c8c9ae397",
+      "status": "FAILED",
+      "retry_count": 0,
+      "original_filename": "reprocess_source_2.png",
+      "source_path": "E:\\AI Image Studio\\RealESRGAN-v030\\uploads\\reprocess_source_2.png",
+      "output_path": null
+    },
+    {
+      "job_id": "9b99b127-a20e-44d4-8363-2aa349c79fc3",
+      "status": "FAILED",
+      "retry_count": 0,
+      "original_filename": "reprocess_source_2.png",
+      "source_path": "E:\\AI Image Studio\\RealESRGAN-v030\\uploads\\reprocess_source_2.png",
+      "output_path": null
+    },
+    {
+      "job_id": "305980aa-517c-4c19-a4a8-7eef30524fd0",
+      "status": "FAILED",
+      "retry_count": 0,
+      "original_filename": "reprocess_source_2.png",
+      "source_path": "E:\\AI Image Studio\\RealESRGAN-v030\\uploads\\reprocess_source_2.png",
+      "output_path": null
+    },
+    {
+      "job_id": "eca2aa88-16a1-4b0e-a9fb-cb686518f354",
+      "status": "FAILED",
+      "retry_count": 0,
+      "original_filename": "reprocess_source_2.png",
+      "source_path": "E:\\AI Image Studio\\RealESRGAN-v030\\uploads\\reprocess_source_2.png",
+      "output_path": null
+    },
+    {
+      "job_id": "8f28aaa8-185c-4e29-9a84-7ccf144cebc5",
+      "status": "FAILED",
+      "retry_count": 0,
+      "original_filename": "batch_corrupt.png",
+      "source_path": "E:\\AI Image Studio\\RealESRGAN-v030\\tests\\scratch_phase1\\batch_corrupt.png",
+      "output_path": null
+    },
+    {
+      "job_id": "33b6049a-c5d5-4dc7-864f-2d50b4c6e8e6",
+      "status": "FAILED",
+      "retry_count": 0,
+      "original_filename": "multi_test_1.png",
+      "source_path": "E:\\AI Image Studio\\RealESRGAN-v030\\uploads\\multi_test_1.png",
+      "output_path": null
+    },
+    {
+      "job_id": "02b025c0-4363-4b46-834e-e3bf7d2c9b73",
+      "status": "FAILED",
+      "retry_count": 0,
+      "original_filename": "multi_test_2.jpg",
+      "source_path": "E:\\AI Image Studio\\RealESRGAN-v030\\uploads\\multi_test_2.jpg",
+      "output_path": null
+    },
+    {
+      "job_id": "19c63186-d8d4-4239-9b41-c4f85e5a0c70",
+      "status": "FAILED",
+      "retry_count": 0,
+      "original_filename": "scan_sample.png",
+      "source_path": "C:\\Users\\Asus\\AppData\\Local\\Temp\\phase4_ux_test_kr6f1rwv\\test_folder_scan\\scan_sample.png",
+      "output_path": null
+    },
+    {
+      "job_id": "f32d9f56-a3a5-4265-b1f0-857f198ffc88",
+      "status": "FAILED",
+      "retry_count": 0,
+      "original_filename": "dup_aeb0b2b2.png",
+      "source_path": "E:\\AI Image Studio\\RealESRGAN-v030\\uploads\\dup_aeb0b2b2.png",
+      "output_path": null
+    },
+    {
+      "job_id": "12ceb25f-0019-43f2-8cec-e097efa6e2ad",
+      "status": "FAILED",
+      "retry_count": 0,
+      "original_filename": "dup_aeb0b2b2_1.png",
+      "source_path": "E:\\AI Image Studio\\RealESRGAN-v030\\uploads\\dup_aeb0b2b2_1.png",
+      "output_path": null
+    },
+    {
+      "job_id": "7d252910-55ed-4387-ab8c-287e1c78f539",
+      "status": "FAILED",
+      "retry_count": 0,
+      "original_filename": "batch_mem_0.jpg",
+      "source_path": "E:\\AI Image Studio\\RealESRGAN-v030\\uploads\\batch_mem_0.jpg",
+      "output_path": null
+    },
+    {
+      "job_id": "a426c817-6b0d-4f3c-b95e-fd7e899d41ca",
+      "status": "FAILED",
+      "retry_count": 0,
+      "original_filename": "batch_mem_1.jpg",
+      "source_path": "E:\\AI Image Studio\\RealESRGAN-v030\\uploads\\batch_mem_1.jpg",
+      "output_path": null
+    },
+    {
+      "job_id": "0406de85-430a-4df4-a377-b542d73c4ea2",
+      "status": "FAILED",
+      "retry_count": 0,
+      "original_filename": "batch_mem_2.jpg",
+      "source_path": "E:\\AI Image Studio\\RealESRGAN-v030\\uploads\\batch_mem_2.jpg",
+      "output_path": null
+    },
+    {
+      "job_id": "a2e16583-d6f9-493b-a3ad-860738ced56e",
+      "status": "FAILED",
+      "retry_count": 0,
+      "original_filename": "batch_mem_3.jpg",
+      "source_path": "E:\\AI Image Studio\\RealESRGAN-v030\\uploads\\batch_mem_3.jpg",
+      "output_path": null
+    },
+    {
+      "job_id": "a7a20cc3-ead0-495a-9b39-c14f078ae978",
+      "status": "FAILED",
+      "retry_count": 0,
+      "original_filename": "batch_mem_4.jpg",
+      "source_path": "E:\\AI Image Studio\\RealESRGAN-v030\\uploads\\batch_mem_4.jpg",
+      "output_path": null
+    },
+    {
+      "job_id": "8ccfdd05-fde8-4f0f-b828-93ca5b94017b",
+      "status": "FAILED",
+      "retry_count": 0,
+      "original_filename": "batch_mem_5.jpg",
+      "source_path": "E:\\AI Image Studio\\RealESRGAN-v030\\uploads\\batch_mem_5.jpg",
+      "output_path": null
+    },
+    {
+      "job_id": "a7e16f3e-8eca-4efd-95a6-c83c06e9548b",
+      "status": "FAILED",
+      "retry_count": 0,
+      "original_filename": "batch_mem_6.jpg",
+      "source_path": "E:\\AI Image Studio\\RealESRGAN-v030\\uploads\\batch_mem_6.jpg",
+      "output_path": null
+    },
+    {
+      "job_id": "35116302-67f9-4179-a855-f086b6defd73",
+      "status": "FAILED",
+      "retry_count": 0,
+      "original_filename": "batch_mem_7.jpg",
+      "source_path": "E:\\AI Image Studio\\RealESRGAN-v030\\uploads\\batch_mem_7.jpg",
+      "output_path": null
+    },
+    {
+      "job_id": "6b5ef593-d996-4a3d-9bb6-7706cf758517",
+      "status": "FAILED",
+      "retry_count": 0,
+      "original_filename": "batch_mem_8.jpg",
+      "source_path": "E:\\AI Image Studio\\RealESRGAN-v030\\uploads\\batch_mem_8.jpg",
+      "output_path": null
+    },
+    {
+      "job_id": "ce3b9ba5-9038-42e7-8bc7-019685bbcaed",
+      "status": "FAILED",
+      "retry_count": 0,
+      "original_filename": "batch_mem_9.jpg",
+      "source_path": "E:\\AI Image Studio\\RealESRGAN-v030\\uploads\\batch_mem_9.jpg",
+      "output_path": null
+    },
+    {
+      "job_id": "845434c1-0fec-483e-97c4-b2b271615b02",
+      "status": "FAILED",
+      "retry_count": 0,
+      "original_filename": "reg_img.png",
+      "source_path": "E:\\AI Image Studio\\RealESRGAN-v030\\uploads\\reg_img.png",
+      "output_path": null
+    },
+    {
+      "job_id": "677c4372-cfd7-42a0-be2a-b5ac54592805",
+      "status": "FAILED",
+      "retry_count": 0,
+      "original_filename": "img1.png",
+      "source_path": "C:\\Users\\Asus\\AppData\\Local\\Temp\\test_folder_browser_fntcsl57\\multi_format_folder\\img1.png",
+      "output_path": null
+    },
+    {
+      "job_id": "1b9db8c8-bc1c-4590-8025-b1349d16ddce",
+      "status": "FAILED",
+      "retry_count": 0,
+      "original_filename": "img2.jpg",
+      "source_path": "C:\\Users\\Asus\\AppData\\Local\\Temp\\test_folder_browser_fntcsl57\\multi_format_folder\\img2.jpg",
+      "output_path": null
+    },
+    {
+      "job_id": "67237feb-685d-4af4-8adf-b70a89e417c0",
+      "status": "FAILED",
+      "retry_count": 0,
+      "original_filename": "img3.webp",
+      "source_path": "C:\\Users\\Asus\\AppData\\Local\\Temp\\test_folder_browser_fntcsl57\\multi_format_folder\\img3.webp",
+      "output_path": null
+    },
+    {
+      "job_id": "4f0c2837-8a86-4013-a270-6449f49d53ed",
+      "status": "FAILED",
+      "retry_count": 0,
+      "original_filename": "space sample.png",
+      "source_path": "C:\\Users\\Asus\\AppData\\Local\\Temp\\test_folder_browser_fntcsl57\\Thư Mục Có Dấu Cách Test Folder\\space sample.png",
+      "output_path": null
+    },
+    {
+      "job_id": "6eab304e-ad95-4ef7-9e3e-b5c501b9c1da",
+      "status": "FAILED",
+      "retry_count": 0,
+      "original_filename": "bình minh rạng rỡ.png",
+      "source_path": "C:\\Users\\Asus\\AppData\\Local\\Temp\\test_folder_browser_fntcsl57\\Thư mục ảnh nghệ thuật đẹp 2026\\bình minh rạng rỡ.png",
+      "output_path": null
+    },
+    {
+      "job_id": "fe1f26f2-f809-4401-a602-7c799e43c43a",
+      "status": "FAILED",
+      "retry_count": 0,
+      "original_filename": "alpha.png",
+      "source_path": "C:\\Users\\Asus\\AppData\\Local\\Temp\\test_folder_browser_fntcsl57\\dir_alpha\\alpha.png",
+      "output_path": null
+    },
+    {
+      "job_id": "dc356ed8-6ad9-4956-bdd3-2870876b6bbc",
+      "status": "FAILED",
+      "retry_count": 0,
+      "original_filename": "beta.png",
+      "source_path": "C:\\Users\\Asus\\AppData\\Local\\Temp\\test_folder_browser_fntcsl57\\dir_beta\\beta.png",
+      "output_path": null
+    },
+    {
+      "job_id": "4534666b-bd89-4860-bfc5-0d7b78403c93",
+      "status": "FAILED",
+      "retry_count": 0,
+      "original_filename": "okarun-dandadan-3840x2160-19863_out.png",
+      "source_path": "E:\\AI Image Studio\\RealESRGAN-v030\\uploads\\okarun-dandadan-3840x2160-19863_out.png",
+      "output_path": null
+    },
+    {
+      "job_id": "c4581151-853c-4937-8024-edb3eb88ba88",
+      "status": "FAILED",
+      "retry_count": 0,
+      "original_filename": "batch_img.png",
+      "source_path": "C:\\Users\\Asus\\AppData\\Local\\Temp\\test_folder_browser_fntcsl57\\batch_input_folder\\batch_img.png",
+      "output_path": null
+    },
+    {
+      "job_id": "b4345ed0-d75a-4de2-8a78-104138b62ec7",
+      "status": "FAILED",
+      "retry_count": 0,
+      "original_filename": "item_once.png",
+      "source_path": "C:\\Users\\Asus\\AppData\\Local\\Temp\\test_folder_browser_fntcsl57\\dup_check_dir\\item_once.png",
+      "output_path": null
+    },
+    {
+      "job_id": "f456fefa-cb68-4ea2-ab1c-1cc3239f244b",
+      "status": "FAILED",
+      "retry_count": 0,
+      "original_filename": "normal.jpg",
+      "source_path": "E:\\AI Image Studio\\RealESRGAN-v030\\uploads\\normal.jpg",
+      "output_path": null
+    },
+    {
+      "job_id": "820096a8-cb17-41f6-88db-631ca07caea4",
+      "status": "FAILED",
+      "retry_count": 0,
+      "original_filename": "large_4mb.jpg",
+      "source_path": "E:\\AI Image Studio\\RealESRGAN-v030\\uploads\\large_4mb.jpg",
+      "output_path": null
+    },
+    {
+      "job_id": "58f64a6d-e918-40b5-a77d-0ce5f574ebb1",
+      "status": "FAILED",
+      "retry_count": 0,
+      "original_filename": "realesrgan_output_4x.jpg",
+      "source_path": "E:\\AI Image Studio\\RealESRGAN-v030\\uploads\\realesrgan_output_4x.jpg",
+      "output_path": null
+    },
+    {
+      "job_id": "807abc51-0479-4d8c-b817-3ef470d57a02",
+      "status": "FAILED",
+      "retry_count": 0,
+      "original_filename": "previously_completed.jpg",
+      "source_path": "E:\\AI Image Studio\\RealESRGAN-v030\\uploads\\previously_completed.jpg",
+      "output_path": null
+    },
+    {
+      "job_id": "c1e108cf-6200-4e29-a454-d78663386ae2",
+      "status": "FAILED",
+      "retry_count": 0,
+      "original_filename": "previously_completed.jpg",
+      "source_path": "E:\\AI Image Studio\\RealESRGAN-v030\\uploads\\previously_completed.jpg",
+      "output_path": null
+    },
+    {
+      "job_id": "d763b670-7307-4f89-aa23-c0fbb07c08d0",
+      "status": "FAILED",
+      "retry_count": 0,
+      "original_filename": "name_a.jpg",
+      "source_path": "E:\\AI Image Studio\\RealESRGAN-v030\\uploads\\name_a.jpg",
+      "output_path": null
+    },
+    {
+      "job_id": "fdc7c456-c18f-4b43-8f33-81da16c59ccd",
+      "status": "FAILED",
+      "retry_count": 0,
+      "original_filename": "name_b.jpg",
+      "source_path": "E:\\AI Image Studio\\RealESRGAN-v030\\uploads\\name_b.jpg",
+      "output_path": null
+    },
+    {
+      "job_id": "12545d5e-6055-445b-9fa6-9f0c55d0cd74",
+      "status": "FAILED",
+      "retry_count": 0,
+      "original_filename": "same_name.jpg",
+      "source_path": "E:\\AI Image Studio\\RealESRGAN-v030\\uploads\\same_name.jpg",
+      "output_path": null
+    },
+    {
+      "job_id": "3b6c292c-c2f4-439e-9459-27a1865ff82c",
+      "status": "FAILED",
+      "retry_count": 0,
+      "original_filename": "same_name_1.jpg",
+      "source_path": "E:\\AI Image Studio\\RealESRGAN-v030\\uploads\\same_name_1.jpg",
+      "output_path": null
+    },
+    {
+      "job_id": "bbc6ee3e-b51f-472f-b6b3-f7e94bae16dc",
+      "status": "FAILED",
+      "retry_count": 0,
+      "original_filename": "valid.png",
+      "source_path": "E:\\AI Image Studio\\RealESRGAN-v030\\uploads\\valid.png",
+      "output_path": null
+    },
+    {
+      "job_id": "b72217ff-d102-4eba-b274-3e9b3aa59d16",
+      "status": "FAILED",
+      "retry_count": 0,
+      "original_filename": "valid.webp",
+      "source_path": "E:\\AI Image Studio\\RealESRGAN-v030\\uploads\\valid.webp",
+      "output_path": null
+    },
+    {
+      "job_id": "b1a85944-3d60-41dd-bf28-fe1e4809488c",
+      "status": "FAILED",
+      "retry_count": 0,
+      "original_filename": "source_loop.jpg",
+      "source_path": "E:\\AI Image Studio\\RealESRGAN-v030\\uploads\\source_loop.jpg",
+      "output_path": null
+    },
+    {
+      "job_id": "c615016a-1c4f-4ed7-8fd4-c541000e945f",
+      "status": "FAILED",
+      "retry_count": 0,
+      "original_filename": "source_loop.jpg",
+      "source_path": "E:\\AI Image Studio\\RealESRGAN-v030\\uploads\\source_loop.jpg",
+      "output_path": null
+    },
+    {
+      "job_id": "afee92ca-ac39-4054-b214-dfc58bb37a2f",
+      "status": "FAILED",
+      "retry_count": 0,
+      "original_filename": "source_loop.jpg",
+      "source_path": "E:\\AI Image Studio\\RealESRGAN-v030\\uploads\\source_loop.jpg",
+      "output_path": null
+    },
+    {
+      "job_id": "5e75b357-9baa-423b-acca-09cca0cacc96",
+      "status": "FAILED",
+      "retry_count": 0,
+      "original_filename": "img1.png",
+      "source_path": "C:\\Users\\Asus\\AppData\\Local\\Temp\\test_folder_browser_flv035r1\\multi_format_folder\\img1.png",
+      "output_path": null
+    },
+    {
+      "job_id": "36aafef0-fcc5-43ff-abfd-992a08d445a4",
+      "status": "FAILED",
+      "retry_count": 0,
+      "original_filename": "img2.jpg",
+      "source_path": "C:\\Users\\Asus\\AppData\\Local\\Temp\\test_folder_browser_flv035r1\\multi_format_folder\\img2.jpg",
+      "output_path": null
+    },
+    {
+      "job_id": "19a70a97-8e22-4ee5-900d-5edeedfa567c",
+      "status": "FAILED",
+      "retry_count": 0,
+      "original_filename": "img3.webp",
+      "source_path": "C:\\Users\\Asus\\AppData\\Local\\Temp\\test_folder_browser_flv035r1\\multi_format_folder\\img3.webp",
+      "output_path": null
+    },
+    {
+      "job_id": "5ec875cf-ffa5-4241-b136-2188472d7bb0",
+      "status": "FAILED",
+      "retry_count": 0,
+      "original_filename": "space sample.png",
+      "source_path": "C:\\Users\\Asus\\AppData\\Local\\Temp\\test_folder_browser_flv035r1\\Thư Mục Có Dấu Cách Test Folder\\space sample.png",
+      "output_path": null
+    }
+  ]
+}

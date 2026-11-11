@@ -404,9 +404,11 @@ class TestGroupD_CrashRecoveryAndDataProtection(unittest.TestCase):
         shutil.rmtree(self.temp_dir, ignore_errors=True)
 
     def test_10_startup_recovery_queued_jobs(self):
-        """Scenario 10: Unprocessed QUEUED jobs remain untouched on startup."""
+        """Scenario 10: Unprocessed QUEUED jobs with valid source remain untouched on startup."""
         jid = str(uuid.uuid4())
-        self.mgr.add_job(job_id=jid, filename="stay_queued.png", input_path="/tmp/stay.png")
+        src_file = Path(self.temp_dir) / "stay.png"
+        src_file.write_bytes(b"dummy_src")
+        self.mgr.add_job(job_id=jid, filename="stay_queued.png", input_path=str(src_file))
 
         report = self.mgr.recover_on_startup()
         self.assertEqual(self.mgr.get_job(jid)["status"], STATUS_QUEUED)
@@ -415,7 +417,9 @@ class TestGroupD_CrashRecoveryAndDataProtection(unittest.TestCase):
     def test_11_startup_recovery_processing_jobs(self):
         """Scenario 11: Interrupted PROCESSING job without output is re-queued for retry."""
         jid = str(uuid.uuid4())
-        self.mgr.add_job(job_id=jid, filename="crashed.png", input_path="/tmp/crashed.png")
+        src_file = Path(self.temp_dir) / "crashed.png"
+        src_file.write_bytes(b"dummy_src")
+        self.mgr.add_job(job_id=jid, filename="crashed.png", input_path=str(src_file))
         self.mgr.transition_status(jid, STATUS_PROCESSING)
 
         report = self.mgr.recover_on_startup()
@@ -427,6 +431,8 @@ class TestGroupD_CrashRecoveryAndDataProtection(unittest.TestCase):
     def test_12_crash_recovery_missing_output(self):
         """Scenario 12: Interrupted job with orphan .tmp file cleans up temp and re-queues."""
         jid = str(uuid.uuid4())
+        src_file = Path(self.temp_dir) / "p.png"
+        src_file.write_bytes(b"dummy_src")
         out_cand = Path(self.temp_dir) / "partial_output_4x.png"
         tmp_cand = Path(self.temp_dir) / "partial_output_4x.png.tmp"
         tmp_cand.write_bytes(b"unfinished partial data")
@@ -434,7 +440,7 @@ class TestGroupD_CrashRecoveryAndDataProtection(unittest.TestCase):
         self.mgr.add_job(
             job_id=jid,
             filename="partial.png",
-            input_path="/tmp/p.png",
+            input_path=str(src_file),
             output_path=str(out_cand)
         )
         self.mgr.transition_status(jid, STATUS_PROCESSING)

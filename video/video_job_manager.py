@@ -398,25 +398,14 @@ class VideoJobManager:
         output_size: Optional[int] = None,
         force: bool = False
     ) -> bool:
-        """Transition job status safely."""
+        """Transition job status safely with atomic conditional update."""
+        now = datetime.now().isoformat()
         with self.get_connection() as conn:
-            cur = conn.execute("SELECT status FROM video_jobs WHERE id = ?", (job_id,))
-            row = cur.fetchone()
-            if not row:
-                return False
-
-            old_status = row["status"]
-            if not force and old_status in VALID_VIDEO_TRANSITIONS:
-                if new_status not in VALID_VIDEO_TRANSITIONS[old_status]:
-                    logger.warning(f"Invalid video job status transition: {old_status} -> {new_status}")
-                    return False
-
-            now = datetime.now().isoformat()
             updates = ["status = ?", "updated_at = ?"]
-            vals = [new_status, now]
+            vals: List[Any] = [new_status, now]
 
-            if new_status == STATUS_PROCESSING and old_status == STATUS_QUEUED:
-                updates.append("started_at = ?")
+            if new_status == STATUS_PROCESSING:
+                updates.append("started_at = COALESCE(started_at, ?)")
                 vals.append(now)
             elif new_status == STATUS_COMPLETED:
                 updates.append("completed_at = ?")
@@ -435,76 +424,26 @@ class VideoJobManager:
                 updates.append("error_message = ?")
                 vals.append(error_message)
 
-            vals.append(job_id)
-            sql = f"UPDATE video_jobs SET {', '.join(updates)} WHERE id = ?"
-            conn.execute(sql, vals)
+            where_clauses = ["id = ?"]
+            where_params = [job_id]
+
+            if not force:
+                allowed_sources = [s for s, targets in VALID_VIDEO_TRANSITIONS.items() if new_status in targets]
+                if not allowed_sources:
+                    logger.warning(f"Invalid video job status transition target: {new_status}")
+                    return False
+                placeholders = ", ".join("?" for _ in allowed_sources)
+                where_clauses.append(f"status IN ({placeholders})")
+                where_params.extend(allowed_sources)
+            else:
+                if new_status in (STATUS_PROCESSING, STATUS_QUEUED):
+                    where_clauses.append("status NOT IN (?, ?)")
+                    where_params.extend([STATUS_CANCELLED, STATUS_COMPLETED])
+
+            sql = f"UPDATE video_jobs SET {', '.join(updates)} WHERE {' AND '.join(where_clauses)}"
+            cur = conn.execute(sql, vals + where_params)
             conn.commit()
-            return True
-
-    def claim_job_for_execution(
-        self,
-        job_id: str,
-        allowed_statuses: Tuple[str, ...] = (STATUS_QUEUED,)
-    ) -> Tuple[bool, str, Optional[Dict[str, Any]]]:
-        """
-        Atomically claim a video job for execution by transitioning it to STATUS_PROCESSING.
-        Guarantees mutual exclusion and prevents duplicate background workers.
-        Returns:
-            (claimed: bool, message: str, job_dict: Optional[Dict])
-        """
-        now = datetime.now().isoformat()
-        with self._lock:
-            with self.get_connection() as conn:
-                cur = conn.execute("SELECT * FROM video_jobs WHERE id = ?", (job_id,))
-                row = cur.fetchone()
-                if not row:
-                    return False, f"Video job {job_id} not found", None
-
-                job_dict = dict(row)
-                curr_status = job_dict["status"]
-
-                if curr_status == STATUS_PROCESSING:
-                    return False, "Video job is already actively processing.", job_dict
-
-                if curr_status not in allowed_statuses:
-                    return False, f"Cannot start/resume job from current status '{curr_status}'. Allowed: {list(allowed_statuses)}", job_dict
-
-                # Atomic conditional UPDATE
-                placeholders = ", ".join("?" for _ in allowed_statuses)
-                sql = f"""
-                    UPDATE video_jobs
-                    SET status = ?,
-                        started_at = COALESCE(started_at, ?),
-                        updated_at = ?
-                    WHERE id = ? AND status IN ({placeholders})
-                """
-                params = [STATUS_PROCESSING, now, now, job_id] + list(allowed_statuses)
-                cur_upd = conn.execute(sql, params)
-                conn.commit()
-
-                if cur_upd.rowcount == 1:
-                    cur_after = conn.execute("SELECT * FROM video_jobs WHERE id = ?", (job_id,))
-                    updated_dict = dict(cur_after.fetchone())
-                    logger.info(f"Video job {job_id} successfully claimed for execution from '{curr_status}'")
-                    return True, "Job claimed successfully", updated_dict
-                else:
-                    cur_after = conn.execute("SELECT * FROM video_jobs WHERE id = ?", (job_id,))
-                    latest_dict = dict(cur_after.fetchone()) if cur_after else None
-                    logger.warning(f"Video job {job_id} claim conflict. Current status: {latest_dict.get('status') if latest_dict else 'unknown'}")
-                    return False, "Conflict: Job was claimed or modified by another worker", latest_dict
-
-    def release_job_claim(
-        self,
-        job_id: str,
-        target_status: str,
-        error_message: Optional[str] = None
-    ) -> bool:
-        """
-        Release execution claim on a job, transitioning it to target_status
-        (e.g. PAUSED, QUEUED, CANCELLED, FAILED).
-        """
-        logger.info(f"Releasing execution claim for video job {job_id} -> {target_status}")
-        return self.transition_status(job_id, target_status, error_message=error_message, force=True)
+            return cur.rowcount > 0
 
     def delete_video_job(self, job_id: str) -> bool:
         """Delete a video job from the database."""

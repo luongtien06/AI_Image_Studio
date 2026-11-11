@@ -7,7 +7,9 @@ CUDA OOM recovery, multi-format export, and quick preview inference.
 
 import gc
 import logging
+import multiprocessing
 import os
+import queue
 import sys
 import threading
 import time
@@ -671,10 +673,401 @@ class AIWorker:
 
 # Global singleton helper
 _global_worker: Optional[AIWorker] = None
+_global_supervisor: Optional["SubprocessWorkerSupervisor"] = None
 
 
-def get_ai_worker(base_dir: Optional[Path] = None, **kwargs) -> AIWorker:
-    """Get or initialize singleton AIWorker instance."""
+def run_inference_worker(task_queue, result_queue, cancel_event, base_dir=None):
+    """
+    Subprocess worker entry point (PID B).
+    Exclusively initializes PyTorch and CUDA in an isolated process.
+    Reads tasks from task_queue, reports progress/results via result_queue,
+    and checks cancel_event.
+    """
+    try:
+        worker = AIWorker(base_dir=Path(base_dir) if base_dir else None)
+        if not worker.initialize_model():
+            result_queue.put({"type": "init_error", "error": worker.error_message})
+            return
+
+        result_queue.put({"type": "ready", "pid": os.getpid()})
+
+        while True:
+            try:
+                task = task_queue.get()
+            except Exception:
+                break
+
+            if task is None or task.get("type") == "shutdown":
+                worker.stop()
+                break
+
+            task_type = task.get("type", "image")
+
+            if task_type == "image":
+                job_id = task.get("job_id")
+                input_path = Path(task["input_path"])
+                output_dir = Path(task["output_dir"])
+                tile_mode = task.get("tile_mode", "auto")
+                requested_tile = task.get("requested_tile")
+                export_format = task.get("export_format", "auto")
+                quality = task.get("quality", 95)
+
+                def progress_cb(pct, detail):
+                    result_queue.put({
+                        "type": "progress",
+                        "job_id": job_id,
+                        "progress_pct": pct,
+                        "detail": detail
+                    })
+
+                def is_cancelled():
+                    return cancel_event.is_set()
+
+                try:
+                    res = worker.process_image(
+                        input_path=input_path,
+                        output_dir=output_dir,
+                        tile_mode=tile_mode,
+                        requested_tile=requested_tile,
+                        export_format=export_format,
+                        quality=quality,
+                        job_id=job_id,
+                        progress_callback=progress_cb,
+                        is_cancelled_func=is_cancelled
+                    )
+                    result_queue.put({
+                        "type": "complete",
+                        "job_id": job_id,
+                        "result": res
+                    })
+                except Exception as e:
+                    is_oom = "out of memory" in str(e).lower()
+                    result_queue.put({
+                        "type": "error",
+                        "job_id": job_id,
+                        "error": str(e),
+                        "is_oom": is_oom
+                    })
+
+            elif task_type == "preview":
+                preview_id = task.get("preview_id")
+                input_path = Path(task["input_path"])
+                thumbnails_dir = Path(task["thumbnails_dir"])
+                patch_size = task.get("patch_size", 256)
+                format_type = task.get("format_type", "webp")
+                quality = task.get("quality", 90)
+
+                try:
+                    res = worker.generate_quick_preview(
+                        input_path=input_path,
+                        thumbnails_dir=thumbnails_dir,
+                        patch_size=patch_size,
+                        format_type=format_type,
+                        quality=quality
+                    )
+                    result_queue.put({
+                        "type": "preview_complete",
+                        "preview_id": preview_id,
+                        "result": res
+                    })
+                except Exception as e:
+                    result_queue.put({
+                        "type": "preview_error",
+                        "preview_id": preview_id,
+                        "error": str(e)
+                    })
+
+            elif task_type == "status":
+                try:
+                    st = worker.get_status()
+                    result_queue.put({
+                        "type": "status_reply",
+                        "status": st
+                    })
+                except Exception as e:
+                    result_queue.put({
+                        "type": "status_reply",
+                        "status": {"state": "ERROR", "error": str(e)}
+                    })
+
+    except Exception as fatal_e:
+        logger.error(f"Fatal unhandled exception in inference worker process: {fatal_e}", exc_info=True)
+        try:
+            result_queue.put({"type": "fatal_crash", "error": str(fatal_e)})
+        except Exception:
+            pass
+
+
+class SubprocessWorkerSupervisor:
+    """
+    Supervises an isolated child worker process for RealESRGAN inference.
+    - Spawns child using multiprocessing with spawn context.
+    - Child process owns CUDA and PyTorch exclusively.
+    - Communicates via task_queue and result_queue.
+    - Detects unrecoverable CUDA faults / non-zero exits.
+    - Cleans up dangling .tmp files on crash or cancellation.
+    - Automatically respawns a clean child process without server restart.
+    """
+    _instance = None
+    _init_lock = threading.Lock()
+
+    def __new__(cls, *args, **kwargs):
+        with cls._init_lock:
+            if cls._instance is None:
+                cls._instance = super(SubprocessWorkerSupervisor, cls).__new__(cls)
+                cls._instance._initialized = False
+            return cls._instance
+
+    def __init__(self, base_dir: Optional[Path] = None):
+        if getattr(self, "_initialized", False):
+            return
+        self.base_dir = Path(base_dir) if base_dir else Path(__file__).resolve().parent
+        self._lock = threading.RLock()
+        self._mp_ctx = multiprocessing.get_context("spawn")
+        self._task_queue = None
+        self._result_queue = None
+        self._cancel_event = None
+        self._process = None
+        self.worker_pid = None
+        self.state = STATE_STOPPED
+        self._initialized = True
+        self._start_child_process()
+
+    def initialize_model(self) -> bool:
+        """Ensure child process is running and model is loaded."""
+        with self._lock:
+            self._ensure_alive()
+            return self.state == STATE_READY
+
+    def _start_child_process(self):
+        with self._lock:
+            self._task_queue = self._mp_ctx.Queue()
+            self._result_queue = self._mp_ctx.Queue()
+            self._cancel_event = self._mp_ctx.Event()
+            self.state = STATE_STARTING
+            self._process = self._mp_ctx.Process(
+                target=run_inference_worker,
+                args=(self._task_queue, self._result_queue, self._cancel_event, str(self.base_dir)),
+                daemon=True
+            )
+            self._process.start()
+            self.worker_pid = self._process.pid
+            logger.info(f"Spawned inference worker subprocess (PID {self.worker_pid})")
+
+            # Wait for ready signal (timeout 45s for model loading)
+            try:
+                msg = self._result_queue.get(timeout=45.0)
+                if msg.get("type") == "ready":
+                    self.state = STATE_READY
+                    logger.info(f"Inference worker subprocess (PID {self.worker_pid}) is READY.")
+                else:
+                    self.state = STATE_ERROR
+                    logger.error(f"Worker subprocess initialization error: {msg}")
+            except Exception as e:
+                self.state = STATE_ERROR
+                logger.error(f"Timeout or failure waiting for worker subprocess: {e}")
+
+    def _ensure_alive(self):
+        with self._lock:
+            if self._process is None or not self._process.is_alive():
+                logger.warning("Worker subprocess not alive; restarting fresh child...")
+                self._terminate_child()
+                self._start_child_process()
+
+    def _terminate_child(self):
+        with self._lock:
+            if self._process:
+                try:
+                    if self._process.is_alive():
+                        self._process.terminate()
+                        self._process.join(timeout=2.0)
+                        if self._process.is_alive():
+                            self._process.kill()
+                except Exception as e:
+                    logger.warning(f"Error terminating child process: {e}")
+                self._process = None
+                self.worker_pid = None
+                self.state = STATE_STOPPED
+
+    def _clean_orphan_tmp(self, output_dir: Path, basename: str):
+        try:
+            for f in Path(output_dir).glob(f"{basename}*.tmp"):
+                try:
+                    f.unlink(missing_ok=True)
+                except Exception:
+                    pass
+        except Exception:
+            pass
+
+    def process_image(
+        self,
+        input_path: Path,
+        output_dir: Path,
+        tile_mode: str = "auto",
+        requested_tile: Optional[int] = None,
+        export_format: str = "auto",
+        quality: int = 95,
+        job_id: Optional[str] = None,
+        progress_callback: Optional[Any] = None,
+        is_cancelled_func: Optional[Any] = None
+    ) -> Dict[str, Any]:
+        with self._lock:
+            self._ensure_alive()
+            self.state = STATE_BUSY
+            self._cancel_event.clear()
+
+            input_path = Path(input_path)
+            output_dir = Path(output_dir)
+
+            task = {
+                "type": "image",
+                "job_id": job_id,
+                "input_path": str(input_path),
+                "output_dir": str(output_dir),
+                "tile_mode": tile_mode,
+                "requested_tile": requested_tile,
+                "export_format": export_format,
+                "quality": quality,
+            }
+            self._task_queue.put(task)
+
+            try:
+                while True:
+                    # Check cancellation
+                    if is_cancelled_func and is_cancelled_func():
+                        self._cancel_event.set()
+                        cancel_start = time.time()
+                        cancelled_cleanly = False
+                        while time.time() - cancel_start < 3.0:
+                            if not self._process.is_alive():
+                                break
+                            try:
+                                msg = self._result_queue.get(timeout=0.2)
+                                if msg.get("type") == "error" and "cancel" in str(msg.get("error", "")).lower():
+                                    cancelled_cleanly = True
+                                    break
+                            except queue.Empty:
+                                pass
+                        if not cancelled_cleanly and self._process.is_alive():
+                            logger.warning("Worker did not exit within cancellation deadline; forcefully terminating.")
+                            self._terminate_child()
+                            self._clean_orphan_tmp(output_dir, input_path.stem)
+                            self._start_child_process()
+                        self._clean_orphan_tmp(output_dir, input_path.stem)
+                        raise RuntimeError("Job cancelled by user request")
+
+                    # Check process survival (detect Class 2/3 unrecoverable CUDA panic)
+                    if self._process and not self._process.is_alive():
+                        exitcode = self._process.exitcode
+                        logger.error(f"Inference child process crashed with exitcode {exitcode}!")
+                        self._clean_orphan_tmp(output_dir, input_path.stem)
+                        self._terminate_child()
+                        self._start_child_process()
+                        raise RuntimeError(
+                            f"Inference worker process crashed unexpectedly (exitcode {exitcode}). CUDA context reset."
+                        )
+
+                    # Poll result queue
+                    try:
+                        msg = self._result_queue.get(timeout=0.2)
+                    except queue.Empty:
+                        continue
+
+                    msg_type = msg.get("type")
+                    if msg_type == "progress":
+                        if progress_callback:
+                            progress_callback(msg.get("progress_pct", 0), msg.get("detail", ""))
+                    elif msg_type == "complete":
+                        self.state = STATE_READY
+                        return msg["result"]
+                    elif msg_type == "error":
+                        self.state = STATE_READY
+                        err = msg.get("error", "Unknown inference error")
+                        raise RuntimeError(err)
+
+            finally:
+                if self.state != STATE_ERROR:
+                    self.state = STATE_READY
+
+    def generate_quick_preview(
+        self,
+        input_path: Path,
+        thumbnails_dir: Path,
+        patch_size: int = 256,
+        format_type: str = "webp",
+        quality: int = 90
+    ) -> Dict[str, Any]:
+        with self._lock:
+            self._ensure_alive()
+            preview_id = uuid.uuid4().hex[:8]
+            task = {
+                "type": "preview",
+                "preview_id": preview_id,
+                "input_path": str(input_path),
+                "thumbnails_dir": str(thumbnails_dir),
+                "patch_size": patch_size,
+                "format_type": format_type,
+                "quality": quality
+            }
+            self._task_queue.put(task)
+
+            while True:
+                if self._process and not self._process.is_alive():
+                    exitcode = self._process.exitcode
+                    self._terminate_child()
+                    self._start_child_process()
+                    return {"success": False, "error": f"Worker crashed during preview (exitcode {exitcode})"}
+
+                try:
+                    msg = self._result_queue.get(timeout=0.2)
+                except queue.Empty:
+                    continue
+
+                if msg.get("type") == "preview_complete":
+                    return msg["result"]
+                elif msg.get("type") == "preview_error":
+                    return {"success": False, "error": msg.get("error")}
+
+    def stop(self):
+        with self._lock:
+            if self._task_queue and self._process and self._process.is_alive():
+                try:
+                    self._task_queue.put({"type": "shutdown"})
+                    self._process.join(timeout=3.0)
+                except Exception:
+                    pass
+            self._terminate_child()
+
+    def get_status(self) -> Dict[str, Any]:
+        with self._lock:
+            alive = bool(self._process and self._process.is_alive())
+            state = self.state if alive else STATE_STOPPED
+            worker_pid = self.worker_pid if alive else None
+
+        gpu_info = get_gpu_info()
+        return {
+            "state": state,
+            "worker_pid": worker_pid,
+            "is_alive": alive,
+            "supervisor": True,
+            "model_name": getattr(self, "model_name", "RealESRGAN_x4plus"),
+            "scale": getattr(self, "scale", 4),
+            "gpu": gpu_info
+        }
+
+
+def get_supervisor_worker(base_dir: Optional[Path] = None) -> SubprocessWorkerSupervisor:
+    """Get or initialize singleton SubprocessWorkerSupervisor instance."""
+    global _global_supervisor
+    if _global_supervisor is None:
+        _global_supervisor = SubprocessWorkerSupervisor(base_dir=base_dir)
+    return _global_supervisor
+
+
+def get_ai_worker(base_dir: Optional[Path] = None, use_subprocess: bool = False, **kwargs) -> Any:
+    """Get or initialize AIWorker instance (or SubprocessWorkerSupervisor if use_subprocess=True)."""
+    if use_subprocess:
+        return get_supervisor_worker(base_dir=base_dir)
     global _global_worker
     if _global_worker is None:
         _global_worker = AIWorker(base_dir=base_dir, **kwargs)
